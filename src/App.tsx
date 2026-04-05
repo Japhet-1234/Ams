@@ -14,8 +14,8 @@ import {
   OperationType 
 } from './firebase';
 import { 
-  signInWithPopup, 
-  GoogleAuthProvider, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   onAuthStateChanged, 
   signOut,
   User as FirebaseUser
@@ -121,29 +121,36 @@ const LoadingScreen = () => (
 );
 
 const Login = () => {
-  const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
     try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      
-      // Check if user exists in Firestore, if not create with default role 'Teacher'
-      const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-      
-      if (!userSnap.exists()) {
-        // Default admin check, others stay without role until ProfileSetup
+      if (isSignUp) {
+        const result = await createUserWithEmailAndPassword(auth, email, password);
+        const user = result.user;
+        
+        const userRef = doc(db, 'users', user.uid);
         const isAdmin = user.email === "japhetsunday0106@gmail.com";
+        
         await setDoc(userRef, {
           uid: user.uid,
-          name: user.displayName || 'User',
+          name: name || 'User',
           email: user.email,
           role: isAdmin ? 'HeadOffice' : '', // Empty role forces ProfileSetup
           isApproved: isAdmin ? true : false
         });
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
       }
-    } catch (error) {
-      console.error("Login Error:", error);
+    } catch (err: any) {
+      console.error("Auth Error:", err);
+      setError(err.message);
     }
   };
 
@@ -152,21 +159,74 @@ const Login = () => {
       <motion.div 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full text-center"
+        className="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full"
       >
-        <div className="mb-6 inline-flex p-4 bg-indigo-100 rounded-full text-indigo-600">
-          <GraduationCap size={48} />
+        <div className="text-center mb-8">
+          <div className="mb-6 inline-flex p-4 bg-indigo-100 rounded-full text-indigo-600">
+            <GraduationCap size={48} />
+          </div>
+          <h1 className="text-3xl font-bold text-slate-800 mb-2">Academic Management</h1>
+          <p className="text-slate-500">{isSignUp ? 'Jisajili ili kuanza kutumia mfumo.' : 'Ingia ili kuendelea.'}</p>
         </div>
-        <h1 className="text-3xl font-bold text-slate-800 mb-2">Academic Management</h1>
-        <p className="text-slate-500 mb-8">Karibu kwenye mfumo wa usimamizi wa kitaaluma. Tafadhali ingia ili kuendelea.</p>
-        
-        <button 
-          onClick={handleLogin}
-          className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 py-3 px-4 rounded-xl font-semibold text-slate-700 hover:bg-slate-50 transition-all shadow-sm hover:shadow-md"
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
-          Ingia na Google
-        </button>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {isSignUp && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Majina Matatu</label>
+              <input 
+                required
+                type="text" 
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="mf. Japhet Sunday"
+              />
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Barua Pepe (Email)</label>
+            <input 
+              required
+              type="email" 
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="mf. japhet@gmail.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Nenosiri (Password)</label>
+            <input 
+              required
+              type="password" 
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+          </div>
+          <button 
+            type="submit"
+            className="w-full bg-indigo-600 text-white py-3 px-4 rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+          >
+            {isSignUp ? 'Jisajili (Sign Up)' : 'Ingia (Login)'}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <button 
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-sm text-indigo-600 font-semibold hover:underline"
+          >
+            {isSignUp ? 'Tayari una akaunti? Ingia hapa' : 'Huna akaunti? Jisajili hapa'}
+          </button>
+        </div>
       </motion.div>
     </div>
   );
@@ -1666,23 +1726,29 @@ export default function App() {
       }
     };
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    let unsubUser: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
-        // Seed grading only after auth
         seedGrading();
-        
         const userRef = doc(db, 'users', firebaseUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          setUser(userSnap.data() as UserProfile);
-        }
+        unsubUser = onSnapshot(userRef, (snap) => {
+          if (snap.exists()) {
+            setUser(snap.data() as UserProfile);
+          }
+          setLoading(false);
+        });
       } else {
+        if (unsubUser) unsubUser();
         setUser(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubUser) unsubUser();
+    };
   }, []);
 
   const handleLogout = () => signOut(auth);
