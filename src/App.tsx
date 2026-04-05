@@ -281,7 +281,7 @@ const Sidebar = ({ user, onLogout }: { user: UserProfile, onLogout: () => void }
   const location = useLocation();
   
   const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/', roles: ['HeadOffice', 'Academic', 'Discipline', 'Teacher'] },
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', roles: ['HeadOffice', 'Academic', 'Discipline', 'Teacher'] },
     { icon: ShieldCheck, label: 'Walimu', path: '/staff', roles: ['HeadOffice'] },
     { icon: ShieldCheck, label: 'Nidhamu', path: '/discipline', roles: ['Discipline'] },
     { icon: Users, label: 'Wanafunzi', path: '/students', roles: ['HeadOffice', 'Academic'] },
@@ -1749,6 +1749,21 @@ const ProfileSetup = ({ user, onComplete }: { user: UserProfile, onComplete: () 
 
 // --- Main App ---
 
+const RoleRedirect = ({ user }: { user: UserProfile }) => {
+  switch (user.role) {
+    case 'HeadOffice':
+      return <Navigate to="/staff" replace />;
+    case 'Academic':
+      return <Navigate to="/students" replace />;
+    case 'Discipline':
+      return <Navigate to="/discipline" replace />;
+    case 'Teacher':
+      return <Navigate to="/results" replace />;
+    default:
+      return <Dashboard user={user} />;
+  }
+};
+
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1831,7 +1846,8 @@ export default function App() {
         <main className="flex-1 p-8 overflow-y-auto">
           <AnimatePresence mode="wait">
             <Routes>
-              <Route path="/" element={<Dashboard user={user} />} />
+              <Route path="/" element={<RoleRedirect user={user} />} />
+              <Route path="/dashboard" element={<Dashboard user={user} />} />
               
               {/* HeadOffice Routes */}
               {user.role === 'HeadOffice' && (
