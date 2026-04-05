@@ -8,7 +8,7 @@ service cloud.firestore {
     // Collection: users
     // Fields:
     //   - name: string (required)
-    //   - email: string (required, email format)
+    //   - staffId: string (required)
     //   - role: string (required, ['HeadOffice', 'Academic', 'Discipline', 'Teacher'])
     //   - uid: string (required, matches auth.uid)
     //
@@ -68,7 +68,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'HeadOffice' ||
-         (request.auth.token.email == "japhetsunday0106@gmail.com" && request.auth.token.email_verified == true));
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.staffId == 'ADMIN001');
     }
 
     function isAcademic() {
@@ -96,7 +96,7 @@ service cloud.firestore {
     // ===============================================================
     function isValidUser(data) {
       return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             isValidEmail(data.email) &&
+             data.staffId is string && data.staffId.size() > 0 &&
              data.role in ['HeadOffice', 'Academic', 'Discipline', 'Teacher'] &&
              data.uid == request.auth.uid;
     }
@@ -129,41 +129,31 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
-      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow read, write: if true;
     }
 
     match /exam_status/{statusId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isAcademic();
+      allow read, write: if true;
     }
 
     match /students/{studentId} {
-      allow read: if isAuthenticated();
-      allow create, delete: if isAdmin() || isAcademic();
-      allow update: if isAdmin() || isAcademic() || isDiscipline();
+      allow read, write: if true;
     }
 
     match /grading_settings/{settingId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin() || isAcademic();
+      allow read, write: if true;
     }
 
     match /exam_results/{resultId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isTeacher() || isAdmin() || isAcademic();
-      allow delete: if isAdmin() || isAcademic();
+      allow read, write: if true;
     }
 
     match /shared_documents/{docId} {
-      allow read: if isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isApproved == true;
-      allow create: if isAuthenticated() && request.resource.data.sender_id == request.auth.uid && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isApproved == true;
+      allow read, write: if true;
     }
 
     match /messages/{msgId} {
-      allow read: if isAuthenticated() && (resource.data.sender_id == request.auth.uid || resource.data.receiver_id == request.auth.uid);
-      allow create: if isAuthenticated() && request.resource.data.sender_id == request.auth.uid;
+      allow read, write: if true;
     }
   }
 }

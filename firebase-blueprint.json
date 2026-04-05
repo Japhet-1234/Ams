@@ -6,7 +6,7 @@
       "type": "object",
       "properties": {
         "name": { "type": "string", "description": "Full name of the user" },
-        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "staffId": { "type": "string", "description": "Unique Staff ID for login" },
         "role": { "type": "string", "enum": ["HeadOffice", "Academic", "Discipline", "Teacher"], "description": "User role" },
         "uid": { "type": "string", "description": "Firebase Auth UID" },
         "subject": { "type": "string", "description": "Subject taught by teacher" },
@@ -14,7 +14,7 @@
         "phone": { "type": "string", "description": "Contact number" },
         "isApproved": { "type": "boolean", "description": "Whether the staff is approved by HeadOffice" }
       },
-      "required": ["name", "email", "role", "uid"]
+      "required": ["name", "staffId", "role", "uid"]
     },
     "ExamStatus": {
       "title": "Exam Status",

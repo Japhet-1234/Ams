@@ -34,6 +34,7 @@ import {
   orderBy,
   serverTimestamp,
   getDocFromServer,
+  getDocs,
   or
 } from 'firebase/firestore';
 import { 
@@ -64,7 +65,7 @@ type UserRole = 'HeadOffice' | 'Academic' | 'Discipline' | 'Teacher';
 interface UserProfile {
   uid: string;
   name: string;
-  email: string;
+  staffId: string;
   role: UserRole;
   subject?: string;
   class_id?: string;
@@ -122,35 +123,63 @@ const LoadingScreen = () => (
 
 const Login = () => {
   const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
+  const [staffId, setStaffId] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [role, setRole] = useState<UserRole>('Teacher');
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    if (password.length < 6) {
+      setError('Nenosiri (Password) lazima liwe na angalau herufi 6.');
+      return;
+    }
+
+    const sId = staffId.trim().toUpperCase();
+
     try {
       if (isSignUp) {
-        const result = await createUserWithEmailAndPassword(auth, email, password);
-        const user = result.user;
+        // Check if Staff ID already exists
+        const q = query(collection(db, 'users'), where('staffId', '==', sId));
+        const existing = await getDocs(q);
+        if (!existing.empty) {
+          setError('Staff ID hii tayari imesajiliwa.');
+          return;
+        }
+
+        const isAdmin = sId === "ADMIN001";
+        const uid = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        const userRef = doc(db, 'users', user.uid);
-        const isAdmin = user.email === "japhetsunday0106@gmail.com";
-        
-        await setDoc(userRef, {
-          uid: user.uid,
+        const userData = {
+          uid,
           name: name || 'User',
-          email: user.email,
-          role: isAdmin ? 'HeadOffice' : '', // Empty role forces ProfileSetup
+          staffId: sId,
+          password, 
+          role: isAdmin ? 'HeadOffice' : role, 
           isApproved: isAdmin ? true : false
-        });
+        };
+
+        await setDoc(doc(db, 'users', uid), userData);
+        localStorage.setItem('ams_user_uid', uid);
+        window.location.reload();
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        const q = query(collection(db, 'users'), where('staffId', '==', sId), where('password', '==', password));
+        const result = await getDocs(q);
+        
+        if (result.empty) {
+          setError('Staff ID au Nenosiri si sahihi.');
+        } else {
+          const userData = result.docs[0].data() as UserProfile;
+          localStorage.setItem('ams_user_uid', userData.uid);
+          window.location.reload();
+        }
       }
     } catch (err: any) {
       console.error("Auth Error:", err);
-      setError(err.message);
+      setError('Kuna tatizo la kiufundi. Tafadhali jaribu tena.');
     }
   };
 
@@ -166,7 +195,7 @@ const Login = () => {
             <GraduationCap size={48} />
           </div>
           <h1 className="text-3xl font-bold text-slate-800 mb-2">Academic Management</h1>
-          <p className="text-slate-500">{isSignUp ? 'Jisajili ili kuanza kutumia mfumo.' : 'Ingia ili kuendelea.'}</p>
+          <p className="text-slate-500">{isSignUp ? 'Jisajili kama Staff ili kuanza.' : 'Ingia kama Staff ili kuendelea.'}</p>
         </div>
 
         {error && (
@@ -177,27 +206,43 @@ const Login = () => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {isSignUp && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Majina Matatu</label>
-              <input 
-                required
-                type="text" 
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="mf. Japhet Sunday"
-              />
-            </div>
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Majina Matatu</label>
+                <input 
+                  required
+                  type="text" 
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="mf. Japhet Sunday"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nafasi yako (Position)</label>
+                <select 
+                  required
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all bg-white"
+                  value={role}
+                  onChange={e => setRole(e.target.value as UserRole)}
+                >
+                  <option value="Teacher">Mwalimu (Staff)</option>
+                  <option value="Academic">Academic Officer</option>
+                  <option value="Discipline">Discipline Officer</option>
+                  <option value="HeadOffice">Head Master/Mistress</option>
+                </select>
+              </div>
+            </>
           )}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Barua Pepe (Email)</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Staff ID</label>
             <input 
               required
-              type="email" 
+              type="text" 
               className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="mf. japhet@gmail.com"
+              value={staffId}
+              onChange={e => setStaffId(e.target.value)}
+              placeholder="mf. STAFF001"
             />
           </div>
           <div>
@@ -314,10 +359,11 @@ const Dashboard = ({ user }: { user: UserProfile }) => {
 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
       const userData = snap.docs.map(doc => doc.data() as UserProfile);
+      const currentUid = localStorage.getItem('ams_user_uid');
       setStats(prev => ({ 
         ...prev, 
         staff: snap.size - 1,
-        unapproved: userData.filter(u => !u.isApproved && u.role !== 'HeadOffice').length
+        unapproved: userData.filter(u => !u.isApproved && u.uid !== currentUid).length
       }));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
 
@@ -455,7 +501,8 @@ const StaffManagement = () => {
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'users'), (snap) => {
-      setStaff(snap.docs.map(doc => doc.data() as UserProfile).filter(u => u.role !== 'HeadOffice'));
+      const currentUid = localStorage.getItem('ams_user_uid');
+      setStaff(snap.docs.map(doc => doc.data() as UserProfile).filter(u => u.uid !== currentUid));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
     return unsub;
   }, []);
@@ -1646,16 +1693,17 @@ const ProfileSetup = ({ user, onComplete }: { user: UserProfile, onComplete: () 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Role (Jukumu)</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Nafasi yako (Position)</label>
             <select 
               required
-              className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none"
+              className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none bg-white"
               value={formData.role}
               onChange={e => setFormData({...formData, role: e.target.value as UserRole})}
             >
-              <option value="Teacher">Mwalimu</option>
-              <option value="Academic">Academic Office</option>
-              <option value="Discipline">Discipline Office</option>
+              <option value="Teacher">Mwalimu (Staff)</option>
+              <option value="Academic">Academic Officer</option>
+              <option value="Discipline">Discipline Officer</option>
+              <option value="HeadOffice">Head Master/Mistress</option>
             </select>
           </div>
           {formData.role === 'Teacher' && (
@@ -1722,47 +1770,47 @@ export default function App() {
           }
         }
       } catch (e) {
-        console.log("Grading already seeded or permission denied during seed");
+        console.log("Grading already seeded");
       }
     };
 
-    let unsubUser: (() => void) | null = null;
-
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        seedGrading();
-        const userRef = doc(db, 'users', firebaseUser.uid);
-        unsubUser = onSnapshot(userRef, (snap) => {
-          if (snap.exists()) {
-            setUser(snap.data() as UserProfile);
-          }
-          setLoading(false);
-        });
-      } else {
-        if (unsubUser) unsubUser();
-        setUser(null);
+    const localUid = localStorage.getItem('ams_user_uid');
+    if (localUid) {
+      seedGrading();
+      const unsub = onSnapshot(doc(db, 'users', localUid), (snap) => {
+        if (snap.exists()) {
+          setUser(snap.data() as UserProfile);
+        } else {
+          localStorage.removeItem('ams_user_uid');
+          setUser(null);
+        }
         setLoading(false);
-      }
-    });
-
-    return () => {
-      unsubscribeAuth();
-      if (unsubUser) unsubUser();
-    };
+      }, (err) => {
+        console.error("User fetch error:", err);
+        setLoading(false);
+      });
+      return () => unsub();
+    } else {
+      setUser(null);
+      setLoading(false);
+    }
   }, []);
 
-  const handleLogout = () => signOut(auth);
+  const handleLogout = () => {
+    localStorage.removeItem('ams_user_uid');
+    window.location.reload();
+  };
 
   if (loading) return <LoadingScreen />;
   if (!user) return <Login />;
 
-  // Force profile setup for users who haven't filled it yet (except HeadOffice who is pre-configured)
-  if (user.role !== 'HeadOffice' && (!user.role || !user.phone)) {
+  // Force profile setup for users who haven't filled it yet (except main admin)
+  if (user.staffId !== 'ADMIN001' && (!user.role || !user.phone)) {
     return <ProfileSetup user={user} onComplete={() => window.location.reload()} />;
   }
 
-  // Block unapproved staff (except HeadOffice)
-  if (user.role !== 'HeadOffice' && !user.isApproved) {
+  // Block unapproved staff (except main admin)
+  if (user.staffId !== 'ADMIN001' && !user.isApproved) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center">
