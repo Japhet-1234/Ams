@@ -44,6 +44,7 @@ import {
   FileSpreadsheet, 
   MessageSquare, 
   LogOut, 
+  LogIn,
   Plus, 
   Trash2, 
   Edit2, 
@@ -65,8 +66,8 @@ type UserRole = 'HeadOffice' | 'Academic' | 'Discipline' | 'Teacher';
 interface UserProfile {
   uid: string;
   name: string;
-  staffId: string;
   role: UserRole;
+  staffCode: string;
   subject?: string;
   class_id?: string;
   phone?: string;
@@ -123,56 +124,101 @@ const LoadingScreen = () => (
 
 const Login = () => {
   const [isSignUp, setIsSignUp] = useState(false);
-  const [staffId, setStaffId] = useState('');
-  const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState<UserRole>('Teacher');
+  const [roleCode, setRoleCode] = useState('');
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     
-    if (password.length < 6) {
-      setError('Nenosiri (Password) lazima liwe na angalau herufi 6.');
+    const trimmedName = name.trim();
+    if (trimmedName.length < 3) {
+      setError('Tafadhali weka jina lako kamili (angalau herufi 3).');
       return;
     }
 
-    const sId = staffId.trim().toUpperCase();
+    // Map role codes
+    let role: UserRole = 'Teacher';
+    let staffCode = '';
+    const code = roleCode.toUpperCase().trim();
+    if (code === 'ACD') {
+      role = 'Academic';
+      staffCode = 'ACD';
+    } else if (code === 'ADM' || code === 'AMD') {
+      role = 'HeadOffice';
+      staffCode = 'ADM';
+    } else if (code === 'DCP') {
+      role = 'Discipline';
+      staffCode = 'DCP';
+    } else {
+      role = 'Teacher';
+    }
 
     try {
       if (isSignUp) {
-        // Check if Staff ID already exists
-        const q = query(collection(db, 'users'), where('staffId', '==', sId));
-        const existing = await getDocs(q);
-        if (!existing.empty) {
-          setError('Staff ID hii tayari imesajiliwa.');
+        // Check if Name already exists
+        const qName = query(collection(db, 'users'), where('name', '==', trimmedName));
+        const existingName = await getDocs(qName);
+        if (!existingName.empty) {
+          setError('Jina hili tayari limesajiliwa. Tafadhali tumia jina lingine au ingia (Login).');
           return;
         }
 
-        const isAdmin = sId === "ADMIN001";
+        // Check if unique roles are already taken
+        if (['Academic', 'Discipline', 'HeadOffice'].includes(role)) {
+          const qRole = query(collection(db, 'users'), where('role', '==', role));
+          const existingRole = await getDocs(qRole);
+          if (!existingRole.empty) {
+            const roleNames: Record<string, string> = {
+              'Academic': 'Academic Officer',
+              'Discipline': 'Discipline Officer',
+              'HeadOffice': 'Head Master/Mistress'
+            };
+            setError(`Nafasi ya ${roleNames[role]} tayari imechukuliwa na mtu mwingine.`);
+            return;
+          }
+        } else {
+          // Generate STFxxx for Teachers
+          const qStaff = query(collection(db, 'users'), where('role', '==', 'Teacher'));
+          const snapStaff = await getDocs(qStaff);
+          const count = snapStaff.size + 1;
+          staffCode = `STF${count.toString().padStart(3, '0')}`;
+        }
+
         const uid = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         const userData = {
           uid,
-          name: name || 'User',
-          staffId: sId,
-          password, 
-          role: isAdmin ? 'HeadOffice' : role, 
-          isApproved: isAdmin ? true : false
+          name: trimmedName,
+          role: role, 
+          staffCode: staffCode,
+          isApproved: ['HeadOffice', 'Academic', 'Discipline'].includes(role),
+          createdAt: serverTimestamp()
         };
 
+        console.log("Setting user in Firestore:", userData.name);
         await setDoc(doc(db, 'users', uid), userData);
+        console.log("User set, saving UID to localStorage:", uid);
         localStorage.setItem('ams_user_uid', uid);
         window.location.reload();
       } else {
-        const q = query(collection(db, 'users'), where('staffId', '==', sId), where('password', '==', password));
-        const result = await getDocs(q);
+        console.log("Logging in user with identifier:", trimmedName);
+        // Try name first
+        let q = query(collection(db, 'users'), where('name', '==', trimmedName));
+        let result = await getDocs(q);
+        
+        // If not found by name, try staffCode
+        if (result.empty) {
+          q = query(collection(db, 'users'), where('staffCode', '==', trimmedName.toUpperCase()));
+          result = await getDocs(q);
+        }
         
         if (result.empty) {
-          setError('Staff ID au Nenosiri si sahihi.');
+          setError('Taarifa hizi hazijapatikana. Tafadhali jisajili kwanza.');
         } else {
           const userData = result.docs[0].data() as UserProfile;
+          console.log("User found, saving UID to localStorage:", userData.uid);
           localStorage.setItem('ams_user_uid', userData.uid);
           window.location.reload();
         }
@@ -195,7 +241,7 @@ const Login = () => {
             <GraduationCap size={48} />
           </div>
           <h1 className="text-3xl font-bold text-slate-800 mb-2">Academic Management</h1>
-          <p className="text-slate-500">{isSignUp ? 'Jisajili kama Staff ili kuanza.' : 'Ingia kama Staff ili kuendelea.'}</p>
+          <p className="text-slate-500">{isSignUp ? 'Jisajili ili kuanza.' : 'Ingia kwa kutumia jina lako.'}</p>
         </div>
 
         {error && (
@@ -205,57 +251,32 @@ const Login = () => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {isSignUp && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Majina Matatu</label>
-                <input 
-                  required
-                  type="text" 
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="mf. Japhet Sunday"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Nafasi yako (Position)</label>
-                <select 
-                  required
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all bg-white"
-                  value={role}
-                  onChange={e => setRole(e.target.value as UserRole)}
-                >
-                  <option value="Teacher">Mwalimu (Staff)</option>
-                  <option value="Academic">Academic Officer</option>
-                  <option value="Discipline">Discipline Officer</option>
-                  <option value="HeadOffice">Head Master/Mistress</option>
-                </select>
-              </div>
-            </>
-          )}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Staff ID</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Majina Matatu (Full Name)</label>
             <input 
               required
               type="text" 
               className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              value={staffId}
-              onChange={e => setStaffId(e.target.value)}
-              placeholder="mf. STAFF001"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="mf. Japhet Sunday"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Nenosiri (Password)</label>
-            <input 
-              required
-              type="password" 
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
+          
+          {isSignUp && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Kodi ya Idara (Department Code - Optional)</label>
+              <input 
+                type="text" 
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                value={roleCode}
+                onChange={e => setRoleCode(e.target.value)}
+                placeholder="mf. ACD, AMD, DCP"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Acha wazi kama wewe ni Mwalimu wa kawaida.</p>
+            </div>
+          )}
+
           <button 
             type="submit"
             className="w-full bg-indigo-600 text-white py-3 px-4 rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
@@ -281,7 +302,7 @@ const Sidebar = ({ user, onLogout }: { user: UserProfile, onLogout: () => void }
   const location = useLocation();
   
   const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', roles: ['HeadOffice', 'Academic', 'Discipline', 'Teacher'] },
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/', roles: ['HeadOffice', 'Academic', 'Discipline', 'Teacher'] },
     { icon: ShieldCheck, label: 'Walimu', path: '/staff', roles: ['HeadOffice'] },
     { icon: ShieldCheck, label: 'Nidhamu', path: '/discipline', roles: ['Discipline'] },
     { icon: Users, label: 'Wanafunzi', path: '/students', roles: ['HeadOffice', 'Academic'] },
@@ -291,6 +312,10 @@ const Sidebar = ({ user, onLogout }: { user: UserProfile, onLogout: () => void }
     { icon: MessageSquare, label: 'Ujumbe', path: '/messages', roles: ['HeadOffice', 'Academic', 'Discipline', 'Teacher'] },
     { icon: FileText, label: 'Nyaraka', path: '/documents', roles: ['HeadOffice', 'Academic', 'Discipline', 'Teacher'] },
   ];
+
+  const filteredItems = user.uid === 'guest' 
+    ? menuItems 
+    : menuItems.filter(item => item.roles.includes(user.role));
 
   return (
     <div className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0">
@@ -302,7 +327,7 @@ const Sidebar = ({ user, onLogout }: { user: UserProfile, onLogout: () => void }
       </div>
       
       <nav className="flex-1 p-4 space-y-1">
-        {menuItems.filter(item => item.roles.includes(user.role)).map((item) => (
+        {filteredItems.map((item) => (
           <Link 
             key={item.path}
             to={item.path}
@@ -325,16 +350,27 @@ const Sidebar = ({ user, onLogout }: { user: UserProfile, onLogout: () => void }
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-slate-800 truncate">{user.name}</p>
-            <p className="text-xs text-slate-500 truncate">{user.role}</p>
+            <p className="text-[10px] text-slate-500 font-bold">{user.staffCode}</p>
+            <p className="text-[10px] text-slate-400 truncate">{user.role}</p>
           </div>
         </div>
-        <button 
-          onClick={onLogout}
-          className="w-full flex items-center gap-3 px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
-        >
-          <LogOut size={18} />
-          <span className="text-sm font-medium">Ondoka</span>
-        </button>
+        {user.uid !== 'guest' ? (
+          <button 
+            onClick={onLogout}
+            className="w-full flex items-center gap-3 px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+          >
+            <LogOut size={18} />
+            <span className="text-sm font-medium">Ondoka</span>
+          </button>
+        ) : (
+          <Link 
+            to="/staff"
+            className="w-full flex items-center gap-3 px-4 py-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+          >
+            <LogIn size={18} />
+            <span className="text-sm font-medium">Ingia kama Admin</span>
+          </Link>
+        )}
       </div>
     </div>
   );
@@ -344,6 +380,7 @@ const Sidebar = ({ user, onLogout }: { user: UserProfile, onLogout: () => void }
 
 const Dashboard = ({ user }: { user: UserProfile }) => {
   const [stats, setStats] = useState({ students: 0, staff: 0, results: 0, unapproved: 0, disciplineCount: 0 });
+  const [allStaff, setAllStaff] = useState<UserProfile[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -359,6 +396,7 @@ const Dashboard = ({ user }: { user: UserProfile }) => {
 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
       const userData = snap.docs.map(doc => doc.data() as UserProfile);
+      setAllStaff(userData);
       const currentUid = localStorage.getItem('ams_user_uid');
       setStats(prev => ({ 
         ...prev, 
@@ -421,23 +459,76 @@ const Dashboard = ({ user }: { user: UserProfile }) => {
 
         {/* Teacher Specific View */}
         {user.role === 'Teacher' && (
-          <div className="lg:col-span-2 bg-white p-8 rounded-2xl border border-slate-100 shadow-sm">
-            <h2 className="text-xl font-bold text-slate-800 mb-4">Hali ya Kazi Yako</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-indigo-50 rounded-xl">
-                <p className="text-xs text-indigo-600 font-bold uppercase mb-1">Somo</p>
-                <p className="text-lg font-bold text-slate-800">{user.subject}</p>
+          <div className="lg:col-span-3 space-y-6">
+            <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm">
+              <h2 className="text-xl font-bold text-slate-800 mb-4">Hali ya Kazi Yako</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-indigo-50 rounded-xl">
+                  <p className="text-xs text-indigo-600 font-bold uppercase mb-1">Somo</p>
+                  <p className="text-lg font-bold text-slate-800">{user.subject}</p>
+                </div>
+                <div className="p-4 bg-purple-50 rounded-xl">
+                  <p className="text-xs text-purple-600 font-bold uppercase mb-1">Darasa</p>
+                  <p className="text-lg font-bold text-slate-800">{user.class_id}</p>
+                </div>
               </div>
-              <div className="p-4 bg-purple-50 rounded-xl">
-                <p className="text-xs text-purple-600 font-bold uppercase mb-1">Darasa</p>
-                <p className="text-lg font-bold text-slate-800">{user.class_id}</p>
+              <div className="mt-6">
+                <Link to="/results" className="inline-flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all">
+                  Ingiza Alama Sasa
+                  <ChevronRight size={20} />
+                </Link>
               </div>
             </div>
-            <div className="mt-6">
-              <Link to="/results" className="inline-flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all">
-                Ingiza Alama Sasa
-                <ChevronRight size={20} />
-              </Link>
+
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+              <h2 className="text-lg font-bold text-slate-800 mb-4">Taarifa za Staff</h2>
+              <p className="text-sm text-slate-500 mb-4">Hapa unaweza kuona taarifa zako zilizohifadhiwa kwenye mfumo.</p>
+              <div className="space-y-3">
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-slate-500">Staff Code:</span>
+                  <span className="font-bold text-indigo-600">{user.staffCode}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-slate-500">Jina Kamili:</span>
+                  <span className="font-semibold text-slate-800">{user.name}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-slate-500">Namba ya Simu:</span>
+                  <span className="font-semibold text-slate-800">{user.phone}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-slate-50">
+                  <span className="text-slate-500">Hali ya Idhini:</span>
+                  <span className={`font-bold ${user.isApproved ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    {user.isApproved ? 'Ameidhinishwa' : 'Inasubiri Idhini'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+              <h2 className="text-lg font-bold text-slate-800 mb-4">Orodha ya Wafanyakazi (Staff List)</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase">Kodi</th>
+                      <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase">Jina</th>
+                      <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase">Idara</th>
+                      <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase">Somo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {allStaff.filter(s => s.uid !== user.uid).map((s) => (
+                      <tr key={s.uid} className="hover:bg-slate-50 transition-all">
+                        <td className="px-4 py-3 text-sm font-bold text-indigo-600">{s.staffCode}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-slate-800">{s.name}</td>
+                        <td className="px-4 py-3 text-sm text-slate-500">{s.role}</td>
+                        <td className="px-4 py-3 text-sm text-slate-500">{s.subject || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -515,6 +606,14 @@ const StaffManagement = () => {
     }
   };
 
+  const changeRole = async (uid: string, newRole: UserRole) => {
+    try {
+      await updateDoc(doc(db, 'users', uid), { role: newRole });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'users');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header>
@@ -526,23 +625,36 @@ const StaffManagement = () => {
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Kodi</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Jina</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Role</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Somo/Darasa</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Mawasiliano</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Hali</th>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Hali / Badili Role</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {staff.map((s) => (
               <tr key={s.uid} className="hover:bg-slate-50 transition-all">
+                <td className="px-6 py-4 text-sm font-bold text-indigo-600">{s.staffCode}</td>
                 <td className="px-6 py-4 text-sm font-medium text-slate-800">{s.name}</td>
-                <td className="px-6 py-4 text-sm text-slate-500">{s.role}</td>
+                <td className="px-6 py-4 text-sm text-slate-500">
+                  <select 
+                    className="bg-transparent border-none outline-none focus:ring-0 text-indigo-600 font-medium"
+                    value={s.role}
+                    onChange={(e) => changeRole(s.uid, e.target.value as UserRole)}
+                  >
+                    <option value="Teacher">Teacher</option>
+                    <option value="Academic">Academic</option>
+                    <option value="Discipline">Discipline</option>
+                    <option value="HeadOffice">Head Office</option>
+                  </select>
+                </td>
                 <td className="px-6 py-4 text-sm text-slate-500">
                   {s.role === 'Teacher' ? `${s.subject} (${s.class_id})` : '-'}
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-500">{s.phone}</td>
-                <td className="px-6 py-4 text-right">
+                <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
                   <button 
                     onClick={() => toggleApproval(s.uid, !!s.isApproved)}
                     className={`px-3 py-1 rounded-full text-xs font-bold ${s.isApproved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}
@@ -575,7 +687,7 @@ const AcademicControls = () => {
         isActive: !status?.isActive,
         term: status?.term || 'Term 1',
         year: status?.year || '2026',
-        updatedBy: auth.currentUser?.uid
+        updatedBy: localStorage.getItem('ams_user_uid')
       }, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'exam_status');
@@ -1663,7 +1775,7 @@ const ProfileSetup = ({ user, onComplete }: { user: UserProfile, onComplete: () 
     try {
       await updateDoc(doc(db, 'users', user.uid), {
         ...formData,
-        isApproved: false // Requires HeadOffice approval
+        isApproved: ['HeadOffice', 'Academic', 'Discipline'].includes(formData.role) ? true : user.isApproved
       });
       onComplete();
     } catch (error) {
@@ -1790,14 +1902,27 @@ export default function App() {
     };
 
     const localUid = localStorage.getItem('ams_user_uid');
-    if (localUid) {
+    if (localUid && localUid !== 'undefined' && localUid !== 'null') {
+      console.log("Loading user with UID:", localUid);
       seedGrading();
-      const unsub = onSnapshot(doc(db, 'users', localUid), (snap) => {
+      const unsub = onSnapshot(doc(db, 'users', localUid), async (snap) => {
         if (snap.exists()) {
-          setUser(snap.data() as UserProfile);
+          const userData = snap.data() as UserProfile;
+          console.log("User found:", userData.name);
+          
+          // Auto-approve unique roles if they somehow got unapproved
+          if (['Academic', 'Discipline'].includes(userData.role) && !userData.isApproved) {
+            console.log("Auto-approving unique role:", userData.role);
+            await updateDoc(doc(db, 'users', localUid), { isApproved: true });
+          }
+          
+          setUser(userData);
         } else {
-          localStorage.removeItem('ams_user_uid');
+          console.warn("User document not found for UID:", localUid);
+          // Don't clear immediately, maybe it's a sync delay
+          // But if it's been a while, we should clear
           setUser(null);
+          localStorage.removeItem('ams_user_uid');
         }
         setLoading(false);
       }, (err) => {
@@ -1806,6 +1931,7 @@ export default function App() {
       });
       return () => unsub();
     } else {
+      console.log("No local user found");
       setUser(null);
       setLoading(false);
     }
@@ -1813,19 +1939,19 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('ams_user_uid');
-    window.location.reload();
+    window.location.href = '/';
   };
 
   if (loading) return <LoadingScreen />;
   if (!user) return <Login />;
 
-  // Force profile setup for users who haven't filled it yet (except main admin)
-  if (user.staffId !== 'ADMIN001' && (!user.role || !user.phone)) {
-    return <ProfileSetup user={user} onComplete={() => window.location.reload()} />;
+  // Force profile setup for users who have logged in but haven't filled it yet
+  if (user.role !== 'HeadOffice' && (!user.role || !user.phone)) {
+    return <ProfileSetup user={user} onComplete={() => window.location.href = '/'} />;
   }
 
-  // Block unapproved staff (except main admin)
-  if (user.staffId !== 'ADMIN001' && !user.isApproved) {
+  // Block unapproved staff (except HeadOffice)
+  if (user.role !== 'HeadOffice' && !user.isApproved) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center">
@@ -1850,32 +1976,20 @@ export default function App() {
               <Route path="/dashboard" element={<Dashboard user={user} />} />
               
               {/* HeadOffice Routes */}
-              {user.role === 'HeadOffice' && (
-                <Route path="/staff" element={<StaffManagement />} />
-              )}
+              <Route path="/staff" element={user.role === 'HeadOffice' ? <StaffManagement /> : <Navigate to="/" />} />
 
               {/* Academic & HeadOffice Routes */}
-              {(user.role === 'Academic' || user.role === 'HeadOffice') && (
-                <>
-                  <Route path="/students" element={<StudentManagement />} />
-                  <Route path="/grading" element={<GradingSettings />} />
-                  <Route path="/broadsheet" element={<Broadsheet />} />
-                </>
-              )}
+              <Route path="/students" element={(user.role === 'Academic' || user.role === 'HeadOffice') ? <StudentManagement /> : <Navigate to="/" />} />
+              <Route path="/grading" element={(user.role === 'Academic' || user.role === 'HeadOffice') ? <GradingSettings /> : <Navigate to="/" />} />
+              <Route path="/broadsheet" element={(user.role === 'Academic' || user.role === 'HeadOffice') ? <Broadsheet /> : <Navigate to="/" />} />
               
               {/* Teacher, Academic & HeadOffice Routes */}
-              {(['Teacher', 'Academic', 'HeadOffice'].includes(user.role)) && (
-                <>
-                  <Route path="/results" element={<ExamResults user={user} />} />
-                  <Route path="/messages" element={<Messaging user={user} />} />
-                  <Route path="/documents" element={<SharedDocuments user={user} />} />
-                </>
-              )}
+              <Route path="/results" element={<ExamResults user={user} />} />
+              <Route path="/messages" element={<Messaging user={user} />} />
+              <Route path="/documents" element={<SharedDocuments user={user} />} />
               
               {/* Discipline Routes */}
-              {user.role === 'Discipline' && (
-                <Route path="/discipline" element={<DisciplineOffice />} />
-              )}
+              <Route path="/discipline" element={user.role === 'Discipline' ? <DisciplineOffice /> : <Navigate to="/" />} />
 
               {/* Default Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
