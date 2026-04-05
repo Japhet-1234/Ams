@@ -10,6 +10,7 @@ import {
 import { 
   auth, 
   db, 
+  storage,
   handleFirestoreError, 
   OperationType 
 } from './firebase';
@@ -38,6 +39,11 @@ import {
   or
 } from 'firebase/firestore';
 import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL 
+} from 'firebase/storage';
+import { 
   LayoutDashboard, 
   Users, 
   GraduationCap, 
@@ -56,7 +62,8 @@ import {
   Settings,
   ShieldCheck,
   BookOpen,
-  FileText
+  FileText,
+  Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -68,6 +75,7 @@ interface UserProfile {
   name: string;
   role: UserRole;
   staffCode: string;
+  photoURL?: string;
   subject?: string;
   class_id?: string;
   phone?: string;
@@ -311,6 +319,7 @@ const Sidebar = ({ user, onLogout }: { user: UserProfile, onLogout: () => void }
     { icon: FileText, label: 'Broadsheet', path: '/broadsheet', roles: ['HeadOffice', 'Academic'] },
     { icon: MessageSquare, label: 'Ujumbe', path: '/messages', roles: ['HeadOffice', 'Academic', 'Discipline', 'Teacher'] },
     { icon: FileText, label: 'Nyaraka', path: '/documents', roles: ['HeadOffice', 'Academic', 'Discipline', 'Teacher'] },
+    { icon: Users, label: 'Profile', path: '/profile', roles: ['HeadOffice', 'Academic', 'Discipline', 'Teacher'] },
   ];
 
   const filteredItems = user.uid === 'guest' 
@@ -345,9 +354,13 @@ const Sidebar = ({ user, onLogout }: { user: UserProfile, onLogout: () => void }
       
       <div className="p-4 border-t border-slate-100">
         <div className="flex items-center gap-3 mb-4 px-2">
-          <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
-            {user.name.charAt(0)}
-          </div>
+          {user.photoURL ? (
+            <img src={user.photoURL} alt={user.name} className="w-10 h-10 rounded-full object-cover border border-slate-200" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+              {user.name.charAt(0)}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-slate-800 truncate">{user.name}</p>
             <p className="text-[10px] text-slate-500 font-bold">{user.staffCode}</p>
@@ -418,9 +431,18 @@ const Dashboard = ({ user }: { user: UserProfile }) => {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-bold text-slate-800">Karibu, {user.name}</h1>
-        <p className="text-slate-500">Ofisi: <span className="text-indigo-600 font-bold">{user.role}</span></p>
+      <header className="flex items-center gap-4">
+        {user.photoURL ? (
+          <img src={user.photoURL} alt={user.name} className="w-16 h-16 rounded-full object-cover border-2 border-indigo-100 shadow-sm" referrerPolicy="no-referrer" />
+        ) : (
+          <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-2xl font-bold border-2 border-white shadow-sm">
+            {user.name.charAt(0)}
+          </div>
+        )}
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Karibu, {user.name}</h1>
+          <p className="text-slate-500">Ofisi: <span className="text-indigo-600 font-bold">{user.role}</span></p>
+        </div>
       </header>
 
       {/* Stats Grid - Visible to HeadOffice and Academic */}
@@ -1765,10 +1787,29 @@ const ProfileSetup = ({ user, onComplete }: { user: UserProfile, onComplete: () 
   const [formData, setFormData] = useState({
     name: user.name,
     role: user.role || 'Teacher',
-    subject: '',
-    class_id: '',
-    phone: ''
+    subject: user.subject || '',
+    class_id: user.class_id || '',
+    phone: user.phone || '',
+    photoURL: user.photoURL || ''
   });
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const storageRef = ref(storage, `profiles/${user.uid}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      setFormData(prev => ({ ...prev, photoURL: url }));
+    } catch (error) {
+      console.error("Upload error:", error);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1794,6 +1835,23 @@ const ProfileSetup = ({ user, onComplete }: { user: UserProfile, onComplete: () 
         <p className="text-slate-500 mb-6">Tafadhali jaza taarifa zako za kikazi ili uweze kutumia mfumo.</p>
         
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="flex flex-col items-center mb-6">
+            <div className="relative group">
+              {formData.photoURL ? (
+                <img src={formData.photoURL} alt="Profile" className="w-24 h-24 rounded-full object-cover border-4 border-indigo-50 shadow-lg" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="w-24 h-24 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 border-4 border-white shadow-lg">
+                  <Camera size={32} />
+                </div>
+              )}
+              <label className="absolute bottom-0 right-0 p-2 bg-indigo-600 text-white rounded-full cursor-pointer shadow-md hover:bg-indigo-700 transition-all">
+                <Plus size={16} />
+                <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={isUploading} />
+              </label>
+            </div>
+            <p className="text-xs text-slate-400 mt-2">{isUploading ? 'Inapakia...' : 'Pakia picha ya profaili'}</p>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Majina Matatu</label>
             <input 
@@ -1987,6 +2045,7 @@ export default function App() {
               <Route path="/results" element={<ExamResults user={user} />} />
               <Route path="/messages" element={<Messaging user={user} />} />
               <Route path="/documents" element={<SharedDocuments user={user} />} />
+              <Route path="/profile" element={<ProfileSetup user={user} onComplete={() => window.location.href = '/'} />} />
               
               {/* Discipline Routes */}
               <Route path="/discipline" element={user.role === 'Discipline' ? <DisciplineOffice /> : <Navigate to="/" />} />
