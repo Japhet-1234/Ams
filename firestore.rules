@@ -1,135 +1,11 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: users
-    // Fields:
-    //   - name: string (required)
-    //   - role: string (required, ['HeadOffice', 'Academic', 'Discipline', 'Teacher'])
-    //   - uid: string (required)
-    //
-    // Collection: students
-    // Fields:
-    //   - full_name: string (required)
-    //   - registration_number: string (required)
-    //   - class_id: string (required)
-    //   - discipline_remarks: string (optional)
-    //   - discipline_updated_at: timestamp (optional)
-    //
-    // Collection: grading_settings
-    // Fields:
-    //   - grade_name: string (required)
-    //   - min_score: number (required)
-    //   - max_score: number (required)
-    //   - remarks: string (optional)
-    //
-    // Collection: exam_results
-    // Fields:
-    //   - student_id: string (required)
-    //   - subject_name: string (required)
-    //   - score: number (required)
-    //   - teacher_id: string (required)
-    //   - term: string (required)
-    //   - year: string (required)
-    //
-    // Collection: shared_documents
-    // Fields:
-    //   - sender_id: string (required)
-    //   - receiver_role: string (required)
-    //   - file_name: string (required)
-    //   - file_path: string (required)
-    //   - category: string (required)
-    //   - createdAt: timestamp (required)
-    //
-    // Collection: messages
-    // Fields:
-    //   - sender_id: string (required)
-    //   - receiver_id: string (required)
-    //   - content: string (required)
-    //   - createdAt: timestamp (required)
-    //
-    // ===============================================================
-
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      return isAuthenticated() &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'HeadOffice';
-    }
-
-    function isAcademic() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Academic';
-    }
-
-    function isTeacher() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Teacher';
-    }
-
-    function isDiscipline() {
-      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Discipline';
-    }
-
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
-    }
-
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    // ===============================================================
-    // Domain Validators
-    // ===============================================================
-    function isValidUser(data) {
-      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.role in ['HeadOffice', 'Academic', 'Discipline', 'Teacher'] &&
-             data.uid == request.auth.uid;
-    }
-
-    function isValidStudent(data) {
-      return data.full_name is string && data.full_name.size() > 0 && data.full_name.size() < 100 &&
-             data.registration_number is string && data.registration_number.size() > 0 &&
-             data.class_id is string && data.class_id.size() > 0 &&
-             (!('discipline_remarks' in data) || (data.discipline_remarks is string && data.discipline_remarks.size() < 1000)) &&
-             (!('discipline_updated_at' in data) || data.discipline_updated_at is timestamp);
-    }
-
-    function isValidGrading(data) {
-      return data.grade_name is string && data.grade_name.size() > 0 &&
-             data.min_score is number && data.min_score >= 0 && data.min_score <= 100 &&
-             data.max_score is number && data.max_score >= 0 && data.max_score <= 100 &&
-             data.min_score <= data.max_score;
-    }
-
-    function isValidExamResult(data) {
-      return data.student_id is string &&
-             data.subject_name is string && data.subject_name.size() > 0 &&
-             data.score is number && data.score >= 0 && data.score <= 100 &&
-             data.teacher_id == request.auth.uid &&
-             data.term is string && data.year is string;
-    }
-
-    // ===============================================================
-    // Collection Rules
-    // ===============================================================
+    // NOTE: This application uses a custom authentication system.
+    // For the system to function, these rules are currently permissive.
+    // It is highly recommended to migrate to Firebase Authentication for better security.
 
     match /users/{userId} {
-      allow read, write: if true;
-    }
-
-    match /exam_status/{statusId} {
       allow read, write: if true;
     }
 
@@ -137,7 +13,7 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    match /grading_settings/{settingId} {
+    match /attendance/{attendanceId} {
       allow read, write: if true;
     }
 
@@ -145,11 +21,23 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    match /shared_documents/{docId} {
+    match /grading_settings/{settingId} {
+      allow read, write: if true;
+    }
+
+    match /exam_status/{statusId} {
+      allow read, write: if true;
+    }
+
+    match /settings/{settingId} {
       allow read, write: if true;
     }
 
     match /messages/{msgId} {
+      allow read, write: if true;
+    }
+
+    match /shared_documents/{docId} {
       allow read, write: if true;
     }
   }

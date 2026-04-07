@@ -92,6 +92,21 @@
         "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
       },
       "required": ["sender_id", "receiver_id", "content"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Daily student attendance records",
+      "type": "object",
+      "properties": {
+        "student_id": { "type": "string", "description": "Reference to student" },
+        "date": { "type": "string", "format": "date", "description": "Date of attendance (YYYY-MM-DD)" },
+        "status": { "type": "string", "enum": ["Present", "Absent", "Late"], "description": "Attendance status" },
+        "class_id": { "type": "string", "description": "Class identifier" },
+        "teacher_id": { "type": "string", "description": "Reference to teacher who took attendance" },
+        "term": { "type": "string", "description": "Academic term" },
+        "year": { "type": "string", "description": "Academic year" }
+      },
+      "required": ["student_id", "date", "status", "class_id", "teacher_id"]
     }
   },
   "firestore": {
@@ -101,6 +116,7 @@
     "exam_results": { "schema": "ExamResult", "description": "Exam scores" },
     "shared_documents": { "schema": "SharedDocument", "description": "Shared files" },
     "messages": { "schema": "Message", "description": "Internal messages" },
-    "exam_status": { "schema": "ExamStatus", "description": "Global exam entry status" }
+    "exam_status": { "schema": "ExamStatus", "description": "Global exam entry status" },
+    "attendance": { "schema": "Attendance", "description": "Daily attendance records" }
   }
 }
