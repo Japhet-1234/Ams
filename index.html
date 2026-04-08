@@ -224,79 +224,7 @@
                                         <td class="px-6 py-4 text-slate-500" x-text="student.class_id"></td>
                                         <td class="px-6 py-4 text-right">
                                             <button class="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><i data-lucide="edit-2" class="w-4 h-4"></i></button>
-                                            <button @click="confirmAction('Futa Mwanafunzi', `Je, una uhakika unataka kumfuta ${student.full_name}?`, () => deleteStudent(student.id))" class="p-2 text-slate-400 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                                        </td>
-                                    </tr>
-                                </template>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Staff View -->
-                <div x-show="currentView === 'staff'" class="space-y-6">
-                    <div class="flex justify-between items-center">
-                        <h3 class="text-xl font-black">Orodha ya Wafanyakazi</h3>
-                        <button @click="showAddStaff = true" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all">
-                            <i data-lucide="plus" class="w-5 h-5"></i>
-                            Mfanyakazi Mpya
-                        </button>
-                    </div>
-
-                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
-                        <table class="w-full text-left">
-                            <thead class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-                                <tr>
-                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Jina</th>
-                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Nafasi</th>
-                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Somo</th>
-                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest text-right">Vitendo</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-50 dark:divide-slate-800">
-                                <template x-for="staff in teachers" :key="staff.uid">
-                                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                        <td class="px-6 py-4 font-bold" x-text="staff.name"></td>
-                                        <td class="px-6 py-4 text-slate-500" x-text="staff.role"></td>
-                                        <td class="px-6 py-4 text-slate-500" x-text="staff.subject || '-'"></td>
-                                        <td class="px-6 py-4 text-right">
-                                            <button @click="confirmAction('Futa Mfanyakazi', `Je, una uhakika unataka kumfuta ${staff.name}?`, () => deleteStaff(staff.uid))" class="p-2 text-slate-400 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                                        </td>
-                                    </tr>
-                                </template>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Classes View -->
-                <div x-show="currentView === 'classes'" class="space-y-6">
-                    <div class="flex justify-between items-center">
-                        <h3 class="text-xl font-black">Orodha ya Madarasa</h3>
-                        <button @click="showAddClass = true" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all">
-                            <i data-lucide="plus" class="w-5 h-5"></i>
-                            Darasa Jipya
-                        </button>
-                    </div>
-
-                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
-                        <table class="w-full text-left">
-                            <thead class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-                                <tr>
-                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Jina la Darasa</th>
-                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Mikondo</th>
-                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Mwalimu wa Darasa</th>
-                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest text-right">Vitendo</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-50 dark:divide-slate-800">
-                                <template x-for="cls in classes" :key="cls.id">
-                                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                        <td class="px-6 py-4 font-bold" x-text="cls.name"></td>
-                                        <td class="px-6 py-4 text-slate-500" x-text="cls.streams.join(', ')"></td>
-                                        <td class="px-6 py-4 text-slate-500" x-text="teachers.find(t => t.uid === cls.teacher_id)?.name || '-'"></td>
-                                        <td class="px-6 py-4 text-right">
-                                            <button @click="confirmAction('Futa Darasa', `Je, una uhakika unataka kufuta darasa la ${cls.name}?`, () => deleteClass(cls.id))" class="p-2 text-slate-400 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                            <button class="p-2 text-slate-400 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                                         </td>
                                     </tr>
                                 </template>
@@ -400,20 +328,6 @@
     </div>
 
     <!-- Modals -->
-    <div x-show="confirmModal.show" x-cloak class="fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl max-w-sm w-full border border-white dark:border-slate-800 text-center">
-            <div class="w-16 h-16 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i data-lucide="alert-triangle" class="w-8 h-8"></i>
-            </div>
-            <h3 class="text-xl font-black mb-2" x-text="confirmModal.title"></h3>
-            <p class="text-slate-500 text-sm mb-6" x-text="confirmModal.message"></p>
-            <div class="flex gap-3">
-                <button @click="confirmModal.show = false" class="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 font-bold text-slate-500">Ghairi</button>
-                <button @click="executeConfirm" class="flex-1 py-3 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-all">Ndiyo, Futa</button>
-            </div>
-        </div>
-    </div>
-
     <div x-show="showEditTimetable" x-cloak class="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
         <div class="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl max-w-md w-full border border-white dark:border-slate-800">
             <h3 class="text-xl font-black mb-6">Panga Kipindi</h3>
@@ -468,14 +382,6 @@
                 showEditTimetable: false,
                 editForm: { day: '', period: '', subject_id: '', teacher_id: '' },
                 
-                // Confirmation Modal State
-                confirmModal: {
-                    show: false,
-                    title: '',
-                    message: '',
-                    action: null
-                },
-
                 days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
                 periods: [
                     { id: 1, time: '08:00 - 09:20', type: 'Double' },
@@ -491,7 +397,6 @@
                     { id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
                     { id: 'students', label: 'Wanafunzi', icon: 'users' },
                     { id: 'staff', label: 'Wafanyakazi', icon: 'user-cog' },
-                    { id: 'classes', label: 'Madarasa', icon: 'building-2' },
                     { id: 'attendance', label: 'Mahudhurio', icon: 'calendar-check' },
                     { id: 'timetable', label: 'Ratiba ya Masomo', icon: 'calendar' },
                     { id: 'exams', label: 'Matokeo ya Mitihani', icon: 'file-spreadsheet' },
@@ -507,11 +412,6 @@
                         await this.fetchData();
                     }
                     this.loading = false;
-                    
-                    this.$watch('currentView', () => {
-                        this.$nextTick(() => lucide.createIcons());
-                    });
-
                     this.$nextTick(() => lucide.createIcons());
                 },
 
@@ -645,52 +545,10 @@
                     } catch (e) { alert('Hifadhi imeshindwa'); }
                 },
 
-                async deleteStudent(id) {
-                    try {
-                        await fetch(`/api/students/${id}`, { method: 'DELETE' });
-                        await this.fetchData();
-                    } catch (e) { alert('Futa imeshindwa'); }
-                },
-
-                async deleteStaff(uid) {
-                    try {
-                        await fetch(`/api/users/${uid}`, { method: 'DELETE' });
-                        await this.fetchData();
-                    } catch (e) { alert('Futa imeshindwa'); }
-                },
-
-                async deleteClass(id) {
-                    try {
-                        await fetch(`/api/classes/${id}`, { method: 'DELETE' });
-                        await this.fetchData();
-                    } catch (e) { alert('Futa imeshindwa'); }
-                },
-
-                confirmAction(title, message, action) {
-                    this.confirmModal = {
-                        show: true,
-                        title,
-                        message,
-                        action
-                    };
-                },
-
-                async executeConfirm() {
-                    if (this.confirmModal.action) {
-                        await this.confirmModal.action();
-                    }
-                    this.confirmModal.show = false;
-                },
-
                 async autoGenerateTimetable() {
-                    this.confirmAction(
-                        'Zalisha Ratiba',
-                        'Je, una uhakika unataka kuzalisha ratiba kiotomatiki? Hii itafuta ratiba zilizopo za darasa hili.',
-                        async () => {
-                            // Logic for auto-gen would go here
-                            alert('Kazi hii inahitaji vigezo vya walimu na masomo kukamilika.');
-                        }
-                    );
+                    if (!confirm('Je, una uhakika unataka kuzalisha ratiba kiotomatiki?')) return;
+                    // Logic for auto-gen would go here, similar to previous implementation
+                    alert('Kazi hii inahitaji vigezo vya walimu na masomo kukamilika.');
                 },
 
                 exportPDF() {
