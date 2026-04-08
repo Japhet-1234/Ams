@@ -1,4 +1,4 @@
-import React, { useState, useEffect, memo, useCallback, useMemo } from 'react';
+import React, { Component, useState, useEffect, memo, useCallback, useMemo } from 'react';
 import { 
   BrowserRouter as Router, 
   Routes, 
@@ -81,6 +81,7 @@ import {
   BarChart as BarChartIcon,
   TrendingUp,
   Target,
+  Zap,
   FilePlus,
   Check,
   AlertTriangle,
@@ -181,6 +182,23 @@ interface TeacherGoal {
   teacher_id: string;
   title: string;
   status: 'Pending' | 'Completed';
+}
+
+interface Subject {
+  id: string;
+  name: string;
+  code: string;
+  department: string;
+}
+
+interface TimetableEntry {
+  id: string;
+  class_id: string;
+  stream: string;
+  day: string;
+  period: number;
+  subject_id: string;
+  teacher_id?: string;
 }
 
 interface ExamStatus {
@@ -410,6 +428,59 @@ interface ExamResult {
 
 // --- Components ---
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  errorInfo: string;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState;
+  public props: ErrorBoundaryProps;
+  
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, errorInfo: '' };
+    this.props = props;
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, errorInfo: error.message };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+          <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center">
+            <XCircle size={48} className="text-red-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Kuna Tatizo</h2>
+            <p className="text-slate-500 mb-6">Mfumo umepata hitilafu isiyotarajiwa.</p>
+            <div className="bg-slate-50 p-4 rounded-xl text-left mb-6 overflow-auto max-h-40">
+              <code className="text-xs text-red-600">{this.state.errorInfo}</code>
+            </div>
+            <button 
+              onClick={() => window.location.href = '/'}
+              className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all"
+            >
+              Jaribu Tena
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const LoadingScreen = () => (
   <div className="flex items-center justify-center min-h-screen bg-slate-50">
     <motion.div 
@@ -436,7 +507,7 @@ const PageLoading = () => (
   </div>
 );
 
-const Login = () => {
+const Login = ({ onLogin }: { onLogin: (user: UserProfile) => void }) => {
   const [step, setStep] = useState<'type' | 'office' | 'credentials'>('type');
   const [loginType, setLoginType] = useState<'Staff' | 'Officer'>('Staff');
   const [selectedOffice, setSelectedOffice] = useState<UserRole | null>(null);
@@ -481,6 +552,7 @@ const Login = () => {
           return;
         }
 
+        // Search for existing officer record or create one
         const q = query(collection(db, 'users'), where('role', '==', selectedOffice));
         const result = await getDocs(q);
 
@@ -498,7 +570,7 @@ const Login = () => {
           };
           await setDoc(doc(db, 'users', uid), officerData);
           localStorage.setItem('ams_user_uid', uid);
-          window.location.href = '/';
+          onLogin(officerData as UserProfile);
           return;
         } else {
           const userData = result.docs[0].data() as UserProfile;
@@ -506,29 +578,37 @@ const Login = () => {
             lastLogin: serverTimestamp()
           });
           localStorage.setItem('ams_user_uid', userData.uid);
-          window.location.href = '/';
+          onLogin(userData);
           return;
         }
       } else {
-        // Staff login logic - Only Name
-        let q = query(collection(db, 'users'), where('name', '==', trimmedName));
-        let result = await getDocs(q);
+        // Staff login logic - Strictly by Name matching the registration database
+        // We search for users who are NOT officers (Teachers, Staff, etc.)
+        const q = query(
+          collection(db, 'users'), 
+          where('name', '==', trimmedName)
+        );
+        const result = await getDocs(q);
         
         if (result.empty) {
-          q = query(collection(db, 'users'), where('staffCode', '==', trimmedName.toUpperCase()));
-          result = await getDocs(q);
-        }
-        
-        if (result.empty) {
-          setError('Jina lako halijapatikana. Tafadhali wasiliana na Mtaaluma (Academic Office) ili usajiliwe.');
+          setError('Jina lako halijapatikana kwenye kanzidata ya usajili. Tafadhali wasiliana na Mtaaluma (Academic Office) ili usajiliwe.');
         } else {
           const userData = result.docs[0].data() as UserProfile;
+          
+          // Ensure officers cannot bypass password by using staff login
+          const officerRoles = ['HeadOffice', 'Academic', 'Discipline'];
+          if (officerRoles.includes(userData.role)) {
+            setError('Tafadhali tumia sehemu ya "Ofisi" kuingia kwenye mfumo.');
+            setIsLoading(false);
+            return;
+          }
+
           await updateDoc(doc(db, 'users', userData.uid), {
             lastLogin: serverTimestamp()
           });
 
           localStorage.setItem('ams_user_uid', userData.uid);
-          window.location.href = '/';
+          onLogin(userData);
         }
       }
     } catch (err: any) {
@@ -690,12 +770,14 @@ const Sidebar = ({ user, onLogout, isOpen, onClose }: { user: UserProfile, onLog
   
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/', roles: ['HeadOffice', 'Academic', 'Discipline', 'Teacher', 'Student'] },
-    { icon: ShieldCheck, label: 'Walimu', path: '/staff', roles: ['HeadOffice'] },
+    { icon: ShieldCheck, label: 'Walimu', path: '/staff', roles: ['HeadOffice', 'Academic'] },
     { icon: ShieldCheck, label: 'Nidhamu', path: '/discipline', roles: ['Discipline'] },
     { icon: Users, label: 'Wanafunzi', path: '/students', roles: ['HeadOffice', 'Academic'] },
+    { icon: BookOpen, label: 'Masomo', path: '/subjects', roles: ['Academic'] },
     { icon: Building2, label: 'Madarasa', path: '/classes', roles: ['HeadOffice', 'Academic'] },
     { icon: TrendingUp, label: 'Ufuatiliaji', path: '/monitoring', roles: ['HeadOffice', 'Academic'] },
     { icon: Settings, label: 'Gredi', path: '/grading', roles: ['HeadOffice', 'Academic'] },
+    { icon: Calendar, label: 'Ratiba', path: '/timetable', roles: ['HeadOffice', 'Academic', 'Teacher', 'Student'] },
     { icon: FileSpreadsheet, label: 'Alama', path: '/results', roles: ['HeadOffice', 'Academic', 'Teacher', 'Student'] },
     { icon: CalendarCheck, label: 'Mahudhurio', path: '/attendance', roles: ['HeadOffice', 'Academic', 'Teacher', 'Student'] },
     { icon: FileText, label: 'Broadsheet', path: '/broadsheet', roles: ['HeadOffice', 'Academic'] },
@@ -793,6 +875,324 @@ const Sidebar = ({ user, onLogout, isOpen, onClose }: { user: UserProfile, onLog
         </div>
       </div>
     </>
+  );
+};
+
+const TimetableManagement = ({ user }: { user: UserProfile }) => {
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [teachers, setTeachers] = useState<UserProfile[]>([]);
+  const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedStream, setSelectedStream] = useState('');
+  const [isEditing, setIsEditing] = useState<{day: string, period: number} | null>(null);
+  const [editForm, setEditForm] = useState({ subject_id: '', teacher_id: '' });
+
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const periods = [
+    { id: 1, time: '08:00 - 09:20', type: 'Double' },
+    { id: 2, time: '09:20 - 10:40', type: 'Double' },
+    { id: 'break1', time: '10:40 - 11:00', type: 'Break', label: 'Mapumziko Mafupi' },
+    { id: 3, time: '11:00 - 12:20', type: 'Double' },
+    { id: 4, time: '12:20 - 13:00', type: 'Single' },
+    { id: 'break2', time: '13:00 - 14:00', type: 'Break', label: 'Mapumziko ya Mchana' },
+    { id: 5, time: '14:00 - 15:20', type: 'Double' },
+  ];
+
+  useEffect(() => {
+    setLoading(true);
+    const unsubClasses = onSnapshot(collection(db, 'classes'), (snap) => {
+      setClasses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class)));
+    });
+    const unsubSubjects = onSnapshot(collection(db, 'subjects'), (snap) => {
+      setSubjects(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Subject)));
+    });
+    const unsubTeachers = onSnapshot(query(collection(db, 'users'), where('role', '==', 'Teacher')), (snap) => {
+      setTeachers(snap.docs.map(doc => doc.data() as UserProfile));
+    });
+    const unsubTimetable = onSnapshot(collection(db, 'timetable'), (snap) => {
+      setTimetable(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimetableEntry)));
+      setLoading(false);
+    });
+
+    return () => {
+      unsubClasses();
+      unsubSubjects();
+      unsubTeachers();
+      unsubTimetable();
+    };
+  }, []);
+
+  const handleSaveEntry = async () => {
+    if (!isEditing || !selectedClass || !selectedStream) return;
+    
+    const entryId = `${selectedClass}_${selectedStream}_${isEditing.day}_${isEditing.period}`;
+    try {
+      if (!editForm.subject_id) {
+        await deleteDoc(doc(db, 'timetable', entryId));
+      } else {
+        await setDoc(doc(db, 'timetable', entryId), {
+          class_id: selectedClass,
+          stream: selectedStream,
+          day: isEditing.day,
+          period: isEditing.period,
+          subject_id: editForm.subject_id,
+          teacher_id: editForm.teacher_id
+        });
+      }
+      setIsEditing(null);
+      setEditForm({ subject_id: '', teacher_id: '' });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'timetable');
+    }
+  };
+
+  const handleDeleteEntry = async () => {
+    if (!isEditing || !selectedClass || !selectedStream) return;
+    const entryId = `${selectedClass}_${selectedStream}_${isEditing.day}_${isEditing.period}`;
+    try {
+      await deleteDoc(doc(db, 'timetable', entryId));
+      setIsEditing(null);
+      setEditForm({ subject_id: '', teacher_id: '' });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'timetable');
+    }
+  };
+
+  const exportPDF = () => {
+    if (!selectedClass || !selectedStream) return;
+    const className = classes.find(c => c.id === selectedClass)?.name || '';
+    const doc = new jsPDF('l', 'mm', 'a4');
+    
+    doc.setFontSize(18);
+    doc.text(`RATIBA YA MASOMO - ${className} ${selectedStream}`, 14, 15);
+    
+    const headers = [['Saa / Kipindi', ...days]];
+    const body = periods.map(p => {
+      if (p.type === 'Break') {
+        return [{ content: `${p.time} (${p.label})`, colSpan: 6, styles: { halign: 'center', fillColor: [241, 245, 249] } }];
+      }
+      const row = [p.time];
+      days.forEach(day => {
+        const entry = timetable.find(t => t.class_id === selectedClass && t.stream === selectedStream && t.day === day && t.period === p.id);
+        const subject = subjects.find(s => s.id === entry?.subject_id)?.name || '-';
+        const teacher = teachers.find(t => t.uid === entry?.teacher_id)?.name || '';
+        row.push(`${subject}\n${teacher}`);
+      });
+      return row;
+    });
+
+    autoTable(doc, {
+      head: headers,
+      body: body as any,
+      startY: 25,
+      theme: 'grid',
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [79, 70, 229] }
+    });
+
+    doc.save(`ratiba_${className}_${selectedStream}.pdf`);
+  };
+
+  const shareTimetable = async () => {
+    if (!selectedClass || !selectedStream) return;
+    const className = classes.find(c => c.id === selectedClass)?.name || '';
+    const shareData = {
+      title: `Ratiba ya Masomo - ${className} ${selectedStream}`,
+      text: `Angalia ratiba ya masomo ya ${className} ${selectedStream} kwenye mfumo wa AMS.`,
+      url: window.location.href
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        alert('Kivinjari chako hakiauni kushiriki moja kwa moja. Tafadhali pakua PDF na utume.');
+      }
+    } catch (err) {
+      console.error('Error sharing:', err);
+    }
+  };
+
+  if (loading) return <PageLoading />;
+
+  const canEdit = user.role === 'Academic';
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Ratiba ya Masomo</h1>
+          <p className="text-slate-500">Panga na usimamie ratiba ya vipindi shuleni.</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <select 
+            className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none text-sm"
+            value={selectedClass}
+            onChange={e => { setSelectedClass(e.target.value); setSelectedStream(''); }}
+          >
+            <option value="">Chagua Darasa</option>
+            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {selectedClass && (
+            <select 
+              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none text-sm"
+              value={selectedStream}
+              onChange={e => setSelectedStream(e.target.value)}
+            >
+              <option value="">Chagua Mkondo</option>
+              {classes.find(c => c.id === selectedClass)?.streams.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          )}
+          {selectedClass && selectedStream && (
+            <div className="flex gap-2">
+              <button 
+                onClick={exportPDF}
+                className="flex items-center gap-2 bg-rose-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-rose-700 transition-all"
+              >
+                <Download size={18} />
+                Pakua PDF
+              </button>
+              <button 
+                onClick={shareTimetable}
+                className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-indigo-700 transition-all"
+              >
+                <MessageSquare size={18} />
+                Shiriki
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {selectedClass && selectedStream ? (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-800/50">
+                <th className="p-4 border-b border-slate-100 dark:border-slate-800 text-left text-xs font-bold text-slate-400 uppercase w-32">Saa / Kipindi</th>
+                {days.map(day => (
+                  <th key={day} className="p-4 border-b border-slate-100 dark:border-slate-800 text-left text-xs font-bold text-slate-400 uppercase">{day}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {periods.map((p, idx) => {
+                if (p.type === 'Break') {
+                  return (
+                    <tr key={idx} className="bg-slate-50/50 dark:bg-slate-800/30">
+                      <td className="p-4 font-medium text-slate-500 text-sm">{p.time}</td>
+                      <td colSpan={5} className="p-4 text-center text-slate-400 font-bold italic text-sm">{p.label}</td>
+                    </tr>
+                  );
+                }
+                return (
+                  <tr key={idx}>
+                    <td className="p-4">
+                      <div className="text-sm font-bold text-slate-700 dark:text-slate-200">{p.time}</div>
+                      <div className="text-[10px] text-slate-400 font-medium uppercase">{p.type} Period</div>
+                    </td>
+                    {days.map(day => {
+                      const entry = timetable.find(t => t.class_id === selectedClass && t.stream === selectedStream && t.day === day && t.period === p.id);
+                      const subject = subjects.find(s => s.id === entry?.subject_id);
+                      const teacher = teachers.find(t => t.uid === entry?.teacher_id);
+                      
+                      return (
+                        <td key={day} className="p-2">
+                          <div 
+                            onClick={() => canEdit && setIsEditing({ day, period: p.id as number })}
+                            className={`min-h-[80px] p-3 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col justify-center items-center text-center ${
+                              entry 
+                                ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-800' 
+                                : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700 hover:border-indigo-300'
+                            }`}
+                          >
+                            {entry ? (
+                              <>
+                                <div className="font-bold text-indigo-700 dark:text-indigo-400 text-sm">{subject?.name}</div>
+                                <div className="text-[10px] text-indigo-500 dark:text-indigo-500 mt-1">{teacher?.name}</div>
+                              </>
+                            ) : (
+                              <div className="text-slate-300 dark:text-slate-600"><Plus size={20} /></div>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-800">
+          <Calendar size={48} className="text-slate-300 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Chagua Darasa na Mkondo</h3>
+          <p className="text-slate-500">Tafadhali chagua darasa na mkondo hapo juu ili kuona au kuhariri ratiba.</p>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {isEditing && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-8 max-w-md w-full"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-white">Panga Kipindi</h2>
+                <button onClick={() => setIsEditing(null)} className="text-slate-400 hover:text-slate-600"><X size={24} /></button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Somo</label>
+                  <select 
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none"
+                    value={editForm.subject_id}
+                    onChange={e => setEditForm({...editForm, subject_id: e.target.value})}
+                  >
+                    <option value="">Chagua Somo</option>
+                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mwalimu</label>
+                  <select 
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none"
+                    value={editForm.teacher_id}
+                    onChange={e => setEditForm({...editForm, teacher_id: e.target.value})}
+                  >
+                    <option value="">Chagua Mwalimu</option>
+                    {teachers.map(t => <option key={t.uid} value={t.uid}>{t.name}</option>)}
+                  </select>
+                </div>
+                <div className="flex gap-3 mt-4">
+                  <button 
+                    onClick={handleSaveEntry}
+                    className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all"
+                  >
+                    Hifadhi
+                  </button>
+                  <button 
+                    onClick={handleDeleteEntry}
+                    className="px-4 bg-rose-50 text-rose-600 rounded-xl font-bold hover:bg-rose-100 transition-all"
+                    title="Futa Kipindi"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 };
 
@@ -926,25 +1326,63 @@ const AcademicOfficerDashboard = ({ user }: { user: UserProfile }) => {
           </div>
         </div>
 
-        {/* AI Insights Section */}
-        <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-6 rounded-2xl shadow-lg text-white">
-          <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-            <Target size={20} />
-            AI Insights & Mapendekezo
+        {/* Quick Actions for Academic Officer */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
+            <Zap size={20} className="text-amber-500" />
+            Vitendo vya Haraka
           </h3>
-          <div className="space-y-4">
-            <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20">
-              <p className="text-xs font-bold uppercase opacity-60 mb-1">Upangaji wa Madarasa</p>
-              <p className="text-sm">Inapendekezwa kuhamisha wanafunzi 5 kutoka 1A kwenda 1C ili kubalansi uwezo wa kitaaluma.</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20">
-              <p className="text-xs font-bold uppercase opacity-60 mb-1">Mada Changamoto</p>
-              <p className="text-sm">Wanafunzi wengi wa Form 2 wanapata shida kwenye mada ya 'Algebra'. Inapendekezwa kuongeza muda wa ziada.</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20">
-              <p className="text-xs font-bold uppercase opacity-60 mb-1">Utabiri wa Matokeo</p>
-              <p className="text-sm">Kulingana na mwenendo wa sasa, wastani wa shule unatarajiwa kuongezeka kwa 4% muhula ujao.</p>
-            </div>
+          <div className="grid grid-cols-2 gap-4">
+            <button 
+              onClick={() => window.location.href = '/subjects'}
+              className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all text-left group"
+            >
+              <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg mb-3 group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                <BookOpen size={24} />
+              </div>
+              <p className="font-bold text-slate-800 dark:text-white">Sajili Masomo</p>
+              <p className="text-xs text-slate-500">Ongeza au hariri masomo</p>
+            </button>
+            <button 
+              onClick={() => window.location.href = '/staff'}
+              className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all text-left group"
+            >
+              <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg mb-3 group-hover:bg-emerald-600 group-hover:text-white transition-all">
+                <Users size={24} />
+              </div>
+              <p className="font-bold text-slate-800 dark:text-white">Sajili Walimu</p>
+              <p className="text-xs text-slate-500">Dhibiti wafanyakazi</p>
+            </button>
+            <button 
+              onClick={() => window.location.href = '/students'}
+              className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-left group"
+            >
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg mb-3 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                <Users size={24} />
+              </div>
+              <p className="font-bold text-slate-800 dark:text-white">Sajili Wanafunzi</p>
+              <p className="text-xs text-slate-500">Ongeza wanafunzi wapya</p>
+            </button>
+            <button 
+              onClick={() => window.location.href = '/classes'}
+              className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all text-left group"
+            >
+              <div className="p-3 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg mb-3 group-hover:bg-purple-600 group-hover:text-white transition-all">
+                <Building2 size={24} />
+              </div>
+              <p className="font-bold text-slate-800 dark:text-white">Panga Madarasa</p>
+              <p className="text-xs text-slate-500">Dhibiti mikondo na walimu</p>
+            </button>
+            <button 
+              onClick={() => window.location.href = '/timetable'}
+              className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all text-left group"
+            >
+              <div className="p-3 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-lg mb-3 group-hover:bg-rose-600 group-hover:text-white transition-all">
+                <Calendar size={24} />
+              </div>
+              <p className="font-bold text-slate-800 dark:text-white">Ratiba ya Shule</p>
+              <p className="text-xs text-slate-500">Unda na tuma ratiba ya masomo</p>
+            </button>
           </div>
         </div>
       </div>
@@ -1730,7 +2168,7 @@ const StaffManagement = () => {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Usimamizi wa Wafanyakazi</h1>
-          <p className="text-slate-500">Angalia na uidhinishe walimu na idara nyingine.</p>
+          <p className="text-slate-500">Angalia na uidhinishe walimu na idara nyingine. (Majina haya yatatumika kwa login ya walimu)</p>
         </div>
         <button 
           onClick={() => {
@@ -1923,6 +2361,7 @@ const DisciplineOffice = () => {
   const [classFilter, setClassFilter] = useState(() => {
     return localStorage.getItem('ams_last_discipline_class') || 'All';
   });
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Save to localStorage when changed
   useEffect(() => {
@@ -1958,13 +2397,21 @@ const DisciplineOffice = () => {
   if (loading) return <PageLoading />;
 
   const filteredStudents = useMemo(() => {
-    return students.filter(s => {
+    const filtered = students.filter(s => {
       const matchesSearch = s.full_name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) || 
                            s.registration_number.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
       const matchesClass = classFilter === 'All' || s.class_id === classFilter;
       return matchesSearch && matchesClass;
     });
-  }, [students, debouncedSearchTerm, classFilter]);
+
+    return [...filtered].sort((a, b) => {
+      if (sortOrder === 'asc') {
+        return a.full_name.localeCompare(b.full_name);
+      } else {
+        return b.full_name.localeCompare(a.full_name);
+      }
+    });
+  }, [students, debouncedSearchTerm, classFilter, sortOrder]);
 
   const classes = useMemo(() => ['All', ...new Set(students.map(s => s.class_id))], [students]);
 
@@ -1986,15 +2433,27 @@ const DisciplineOffice = () => {
             onChange={e => setSearchTerm(e.target.value)}
           />
         </div>
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <span className="text-sm font-medium text-slate-500">Chuja Darasa:</span>
-          <select 
-            className="px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all bg-white"
-            value={classFilter}
-            onChange={e => setClassFilter(e.target.value)}
-          >
-            {classes.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-slate-500">Panga:</span>
+            <button 
+              onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+              className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 outline-none hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-sm font-medium text-slate-700 dark:text-slate-200"
+            >
+              {sortOrder === 'asc' ? 'A-Z' : 'Z-A'}
+              <TrendingUp size={16} className={sortOrder === 'desc' ? 'rotate-180 transition-transform' : 'transition-transform'} />
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-slate-500">Chuja Darasa:</span>
+            <select 
+              className="px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all bg-white dark:text-slate-200"
+              value={classFilter}
+              onChange={e => setClassFilter(e.target.value)}
+            >
+              {classes.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -2096,8 +2555,6 @@ const Broadsheet = () => {
     };
   }, []);
 
-  if (loading) return <PageLoading />;
-
   const getGrade = (score: number) => {
     const grade = grading.find(g => score >= g.min_score && score <= g.max_score);
     return grade ? grade.grade_name : '-';
@@ -2150,6 +2607,8 @@ const Broadsheet = () => {
     link.click();
     document.body.removeChild(link);
   }, [processedData]);
+
+  if (loading) return <PageLoading />;
 
   return (
     <div className="space-y-6">
@@ -2492,6 +2951,152 @@ const TeacherMonitoring = () => {
   );
 };
 
+
+const SubjectManagement = () => {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [isAdding, setIsAdding] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [formData, setFormData] = useState({ name: '', code: '', department: '' });
+
+  useEffect(() => {
+    setLoading(true);
+    const unsub = onSnapshot(collection(db, 'subjects'), (snap) => {
+      setSubjects(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Subject)));
+      setLoading(false);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'subjects');
+      setLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await addDoc(collection(db, 'subjects'), formData);
+      setIsAdding(false);
+      setFormData({ name: '', code: '', department: '' });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'subjects');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Je, una uhakika unataka kufuta somo hili?')) {
+      try {
+        await deleteDoc(doc(db, 'subjects', id));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, 'subjects');
+      }
+    }
+  };
+
+  if (loading) return <PageLoading />;
+
+  return (
+    <div className="space-y-6">
+      <header className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Usimamizi wa Masomo</h1>
+          <p className="text-slate-500">Sajili na panga masomo yanayofundishwa shuleni.</p>
+        </div>
+        <button 
+          onClick={() => setIsAdding(true)}
+          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-indigo-700 transition-all"
+        >
+          <Plus size={20} />
+          Somo Jipya
+        </button>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {subjects.map(subject => (
+          <div key={subject.id} className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                <BookOpen size={24} />
+              </div>
+              <button onClick={() => handleDelete(subject.id)} className="text-slate-400 hover:text-red-500 transition-colors">
+                <Trash2 size={18} />
+              </button>
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white">{subject.name}</h3>
+            <p className="text-sm text-slate-500 font-medium uppercase">{subject.code}</p>
+            <div className="mt-4 pt-4 border-t border-slate-50 dark:border-slate-800">
+              <span className="text-xs font-bold text-slate-400 uppercase">Idara: {subject.department}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <AnimatePresence>
+        {isAdding && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-8 max-w-md w-full"
+            >
+              <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-6">Sajili Somo Jipya</h2>
+              <form onSubmit={handleAdd} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Jina la Somo</label>
+                  <input 
+                    required
+                    type="text" 
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none"
+                    value={formData.name}
+                    onChange={e => setFormData({...formData, name: e.target.value})}
+                    placeholder="mf. Mathematics"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Kifupisho (Code)</label>
+                  <input 
+                    required
+                    type="text" 
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none"
+                    value={formData.code}
+                    onChange={e => setFormData({...formData, code: e.target.value})}
+                    placeholder="mf. MATH"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Idara (Department)</label>
+                  <input 
+                    required
+                    type="text" 
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none"
+                    value={formData.department}
+                    onChange={e => setFormData({...formData, department: e.target.value})}
+                    placeholder="mf. Science"
+                  />
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button 
+                    type="button"
+                    onClick={() => setIsAdding(false)}
+                    className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all"
+                  >
+                    Ghairi
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-all"
+                  >
+                    Hifadhi
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const StudentManagement = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [isAdding, setIsAdding] = useState(false);
@@ -2524,6 +3129,7 @@ const StudentManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [classFilter, setClassFilter] = useState('All');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -2616,10 +3222,14 @@ const StudentManagement = () => {
         photo_url: url
       });
       
-      // Update user account name if changed
-      await updateDoc(doc(db, 'users', isEditing), {
-        name: formData.full_name
-      });
+      // Update user account name if changed (optional check)
+      try {
+        await updateDoc(doc(db, 'users', isEditing), {
+          name: formData.full_name
+        });
+      } catch (e) {
+        console.warn("User account not found for student, skipping name update");
+      }
 
       setIsEditing(null);
       setFormData({ 
@@ -2642,13 +3252,21 @@ const StudentManagement = () => {
   };
 
   const filteredStudents = useMemo(() => {
-    return students.filter(s => {
+    const filtered = students.filter(s => {
       const matchesSearch = s.full_name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) || 
                            s.registration_number.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
       const matchesClass = classFilter === 'All' || s.class_id === classFilter;
       return matchesSearch && matchesClass;
     });
-  }, [students, debouncedSearchTerm, classFilter]);
+
+    return [...filtered].sort((a, b) => {
+      if (sortOrder === 'asc') {
+        return a.full_name.localeCompare(b.full_name);
+      } else {
+        return b.full_name.localeCompare(a.full_name);
+      }
+    });
+  }, [students, debouncedSearchTerm, classFilter, sortOrder]);
 
   const classes = useMemo(() => ['All', ...new Set(students.map(s => s.class_id))], [students]);
   
@@ -2721,15 +3339,27 @@ const StudentManagement = () => {
             onChange={e => setSearchTerm(e.target.value)}
           />
         </div>
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <span className="text-sm font-medium text-slate-500">Chuja Darasa:</span>
-          <select 
-            className="px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all bg-white"
-            value={classFilter}
-            onChange={e => setClassFilter(e.target.value)}
-          >
-            {classes.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-slate-500">Panga:</span>
+            <button 
+              onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+              className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 outline-none hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-sm font-medium text-slate-700 dark:text-slate-200"
+            >
+              {sortOrder === 'asc' ? 'A-Z' : 'Z-A'}
+              <TrendingUp size={16} className={sortOrder === 'desc' ? 'rotate-180 transition-transform' : 'transition-transform'} />
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-slate-500">Chuja Darasa:</span>
+            <select 
+              className="px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all bg-white dark:text-slate-200"
+              value={classFilter}
+              onChange={e => setClassFilter(e.target.value)}
+            >
+              {classes.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -4115,7 +4745,7 @@ export default function App() {
       // Safety timeout for loading
       const timeoutId = setTimeout(() => {
         setLoading(false);
-      }, 8000);
+      }, 500); // Further reduced to 500ms
 
       const unsub = onSnapshot(doc(db, 'users', localUid), async (snap) => {
         if (snap.exists()) {
@@ -4163,15 +4793,15 @@ export default function App() {
   };
 
   if (loading) return <LoadingScreen />;
-  if (!user) return <Login />;
+  if (!user) return <Login onLogin={setUser} />;
 
   // Force profile setup for users who have logged in but haven't filled it yet
-  if (user.role !== 'HeadOffice' && (!user.role || !user.phone)) {
+  if (!['HeadOffice', 'Academic', 'Discipline'].includes(user.role) && (!user.role || !user.phone)) {
     return <ProfileSetup user={user} onComplete={() => window.location.href = '/'} />;
   }
 
-  // Block unapproved staff (except HeadOffice)
-  if (user.role !== 'HeadOffice' && !user.isApproved) {
+  // Block unapproved staff (except Officers)
+  if (!['HeadOffice', 'Academic', 'Discipline'].includes(user.role) && !user.isApproved) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center">
@@ -4185,8 +4815,9 @@ export default function App() {
   }
 
   return (
-    <Router>
-      <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+    <ErrorBoundary>
+      <Router>
+        <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
         <Sidebar 
           user={user} 
           onLogout={handleLogout} 
@@ -4219,12 +4850,14 @@ export default function App() {
               <Route path="/dashboard" element={<Dashboard user={user} />} />
               
               {/* HeadOffice Routes */}
-              <Route path="/staff" element={user.role === 'HeadOffice' ? <StaffManagement /> : <Navigate to="/" />} />
+              <Route path="/staff" element={(user.role === 'HeadOffice' || user.role === 'Academic') ? <StaffManagement /> : <Navigate to="/" />} />
               <Route path="/settings" element={user.role === 'HeadOffice' ? <SystemSettings /> : <Navigate to="/" />} />
 
               {/* Academic & HeadOffice Routes */}
               <Route path="/students" element={(user.role === 'Academic' || user.role === 'HeadOffice') ? <StudentManagement /> : <Navigate to="/" />} />
+              <Route path="/subjects" element={user.role === 'Academic' ? <SubjectManagement /> : <Navigate to="/" />} />
               <Route path="/classes" element={(user.role === 'Academic' || user.role === 'HeadOffice') ? <ClassManagement /> : <Navigate to="/" />} />
+              <Route path="/timetable" element={<TimetableManagement user={user} />} />
               <Route path="/monitoring" element={(user.role === 'Academic' || user.role === 'HeadOffice') ? <TeacherMonitoring /> : <Navigate to="/" />} />
               <Route path="/grading" element={(user.role === 'Academic' || user.role === 'HeadOffice') ? <GradingSettings /> : <Navigate to="/" />} />
               <Route path="/broadsheet" element={(user.role === 'Academic' || user.role === 'HeadOffice') ? <Broadsheet /> : <Navigate to="/" />} />
@@ -4247,5 +4880,6 @@ export default function App() {
       </div>
     </div>
   </Router>
+  </ErrorBoundary>
   );
 }

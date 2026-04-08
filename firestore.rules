@@ -1,59 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // NOTE: This application uses a custom authentication system.
-    // For the system to function, these rules are currently permissive.
-    // It is highly recommended to migrate to Firebase Authentication for better security.
-
-    match /users/{userId} {
-      allow read, write: if true;
-    }
-
-    match /students/{studentId} {
-      allow read, write: if true;
-    }
-
-    match /attendance/{attendanceId} {
-      allow read, write: if true;
-    }
-
-    match /exam_results/{resultId} {
-      allow read, write: if true;
-    }
-
-    match /grading_settings/{settingId} {
-      allow read, write: if true;
-    }
-
-    match /exam_status/{statusId} {
-      allow read, write: if true;
-    }
-
-    match /settings/{settingId} {
-      allow read, write: if true;
-    }
-
-    match /messages/{msgId} {
-      allow read, write: if true;
-    }
-
-    match /shared_documents/{docId} {
-      allow read, write: if true;
-    }
-
-    match /classes/{classId} {
-      allow read, write: if true;
-    }
-
-    match /teaching_logs/{logId} {
-      allow read, write: if true;
-    }
-
-    match /teacher_documents/{docId} {
-      allow read, write: if true;
-    }
-
-    match /teacher_goals/{goalId} {
+    match /{document=**} {
       allow read, write: if true;
     }
   }
