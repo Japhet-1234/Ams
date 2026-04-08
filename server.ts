@@ -1,205 +1,134 @@
+// ACADEMIC MANAGEMENT SYSTEM
+// CLEAN BACKEND CODE
+// ===============================
+
 import express from 'express';
 import sqlite3 from 'sqlite3';
-import path from 'path';
-import cors from 'cors';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.env.url || import.meta.url);
-const __dirname = path.dirname(__filename);
+import { open } from 'sqlite';
+import bcrypt from 'bcrypt';
 
 const app = express();
-const PORT = 3000;
-
-app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
 
-// Database Setup
-const db = new sqlite3.Database('./school.db', (err) => {
-    if (err) console.error('Database connection error:', err);
-    else console.log('Connected to SQLite database.');
+// ===============================
+// DATABASE CONNECTION
+// ===============================
+let db;
+
+(async () => {
+  db = await open({
+    filename: './school.db',
+    driver: sqlite3.Database
+  });
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      role TEXT,
+      staffCode TEXT UNIQUE,
+      password TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS students (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      full_name TEXT NOT NULL,
+      registration_number TEXT UNIQUE,
+      password TEXT NOT NULL,
+      class_id INTEGER,
+      stream TEXT
+    );
+  `);
+})();
+
+// ===============================
+// REGISTER USER
+// ===============================
+app.post('/api/register', async (req, res) => {
+  const { name, role, staffCode, password } = req.body;
+
+  if (!name || !password) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  try {
+    await db.run(
+      'INSERT INTO users (name, role, staffCode, password) VALUES (?, ?, ?, ?)',
+      [name, role, staffCode, hashedPassword]
+    );
+
+    res.json({ message: 'User registered successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'User already exists or database error' });
+  }
 });
 
-// Initialize Tables
-db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS users (
-        uid TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        role TEXT NOT NULL,
-        staffCode TEXT UNIQUE,
-        password TEXT,
-        photoURL TEXT,
-        subject TEXT,
-        assigned_subjects TEXT, -- JSON string
-        class_id TEXT,
-        phone TEXT,
-        isApproved BOOLEAN DEFAULT 0,
-        lastLogin DATETIME
-    )`);
+// ===============================
+// LOGIN USER
+// ===============================
+app.post('/api/login', async (req, res) => {
+  const { staffCode, password } = req.body;
 
-    db.run(`CREATE TABLE IF NOT EXISTS students (
-        id TEXT PRIMARY KEY,
-        full_name TEXT NOT NULL,
-        registration_number TEXT UNIQUE NOT NULL,
-        class_id TEXT NOT NULL,
-        stream TEXT,
-        photo_url TEXT,
-        gender TEXT,
-        dob TEXT,
-        contacts TEXT,
-        academic_level TEXT,
-        discipline_remarks TEXT,
-        average REAL DEFAULT 0,
-        total REAL DEFAULT 0,
-        grade TEXT
-    )`);
+  const user = await db.get(
+    'SELECT * FROM users WHERE staffCode = ?',
+    [staffCode]
+  );
 
-    db.run(`CREATE TABLE IF NOT EXISTS classes (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        streams TEXT, -- JSON array
-        teacher_id TEXT,
-        level TEXT
-    )`);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
 
-    db.run(`CREATE TABLE IF NOT EXISTS subjects (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        code TEXT UNIQUE NOT NULL,
-        department TEXT,
-        periods_per_week INTEGER DEFAULT 4
-    )`);
+  const isMatch = await bcrypt.compare(password, user.password);
 
-    db.run(`CREATE TABLE IF NOT EXISTS timetable (
-        id TEXT PRIMARY KEY,
-        class_id TEXT NOT NULL,
-        stream TEXT NOT NULL,
-        day TEXT NOT NULL,
-        period INTEGER NOT NULL,
-        subject_id TEXT,
-        teacher_id TEXT
-    )`);
+  if (!isMatch) {
+    return res.status(401).json({ error: 'Invalid password' });
+  }
 
-    db.run(`CREATE TABLE IF NOT EXISTS attendance (
-        id TEXT PRIMARY KEY,
-        student_id TEXT NOT NULL,
-        class_id TEXT NOT NULL,
-        date TEXT NOT NULL,
-        status TEXT NOT NULL,
-        teacher_id TEXT
-    )`);
-
-    db.run(`CREATE TABLE IF NOT EXISTS settings (
-        id TEXT PRIMARY KEY,
-        schoolName TEXT,
-        isDarkMode BOOLEAN DEFAULT 0
-    )`);
-
-    // Seed default settings
-    db.run(`INSERT OR IGNORE INTO settings (id, schoolName, isDarkMode) VALUES ('school_info', 'AMS SCHOOL', 0)`);
+  res.json({
+    message: 'Login successful',
+    user
+  });
 });
 
-// --- API Endpoints ---
+// ===============================
+// ADD STUDENT
+// ===============================
+app.post('/api/students', async (req, res) => {
+  const { full_name, registration_number, password, class_id, stream } = req.body;
 
-// Auth
-app.post('/api/login', (req, res) => {
-    const { name, password, role } = req.body;
-    const query = role === 'Student' 
-        ? 'SELECT * FROM students WHERE full_name = ? AND registration_number = ?'
-        : 'SELECT * FROM users WHERE name = ? AND password = ? AND role = ?';
-    
-    const params = role === 'Student' ? [name, password] : [name, password, role];
+  if (!full_name || !registration_number || !password) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
 
-    db.get(query, params, (err, row) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (!row) return res.status(401).json({ error: 'Invalid credentials' });
-        res.json(row);
-    });
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  try {
+    await db.run(
+      `INSERT INTO students 
+      (full_name, registration_number, password, class_id, stream) 
+      VALUES (?, ?, ?, ?, ?)`,
+      [full_name, registration_number, hashedPassword, class_id, stream]
+    );
+
+    res.json({ message: 'Student added successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Student already exists or database error' });
+  }
 });
 
-// Users/Staff
-app.get('/api/users', (req, res) => {
-    db.all('SELECT * FROM users', [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
+// ===============================
+// GET ALL STUDENTS
+// ===============================
+app.get('/api/students', async (req, res) => {
+  const students = await db.all('SELECT * FROM students');
+  res.json(students);
 });
 
-app.post('/api/users', (req, res) => {
-    const { uid, name, role, staffCode, password, photoURL, subject, assigned_subjects, class_id, phone, isApproved } = req.body;
-    const query = `INSERT INTO users (uid, name, role, staffCode, password, photoURL, subject, assigned_subjects, class_id, phone, isApproved) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    db.run(query, [uid, name, role, staffCode, password, photoURL, subject, JSON.stringify(assigned_subjects), class_id, phone, isApproved], (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true });
-    });
-});
-
-// Students
-app.get('/api/students', (req, res) => {
-    db.all('SELECT * FROM students', [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
-
-app.post('/api/students', (req, res) => {
-    const s = req.body;
-    const query = `INSERT INTO students (id, full_name, registration_number, class_id, stream, photo_url, gender, dob, contacts, academic_level, discipline_remarks, average, total, grade) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    db.run(query, [s.id, s.full_name, s.registration_number, s.class_id, s.stream, s.photo_url, s.gender, s.dob, s.contacts, s.academic_level, s.discipline_remarks, s.average, s.total, s.grade], (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true });
-    });
-});
-
-// Classes
-app.get('/api/classes', (req, res) => {
-    db.all('SELECT * FROM classes', [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows.map(r => ({ ...r, streams: JSON.parse(r.streams || '[]') })));
-    });
-});
-
-// Subjects
-app.get('/api/subjects', (req, res) => {
-    db.all('SELECT * FROM subjects', [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
-
-// Timetable
-app.get('/api/timetable', (req, res) => {
-    db.all('SELECT * FROM timetable', [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
-    });
-});
-
-app.post('/api/timetable', (req, res) => {
-    const { id, class_id, stream, day, period, subject_id, teacher_id } = req.body;
-    const query = `INSERT OR REPLACE INTO timetable (id, class_id, stream, day, period, subject_id, teacher_id) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?)`;
-    db.run(query, [id, class_id, stream, day, period, subject_id, teacher_id], (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true });
-    });
-});
-
-// Settings
-app.get('/api/settings', (req, res) => {
-    db.get('SELECT * FROM settings WHERE id = "school_info"', (err, row) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(row);
-    });
-});
-
-// Serve Frontend
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+// ===============================
+// START SERVER
+// ===============================
+app.listen(3000, () => {
+  console.log('Server running on port 3000');
 });
