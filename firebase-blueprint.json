@@ -6,7 +6,7 @@
       "type": "object",
       "properties": {
         "name": { "type": "string", "description": "Full name of the user" },
-        "staffId": { "type": "string", "description": "Unique Staff ID for login" },
+        "staffCode": { "type": "string", "description": "Unique Staff ID for login" },
         "role": { "type": "string", "enum": ["HeadOffice", "Academic", "Discipline", "Teacher"], "description": "User role" },
         "uid": { "type": "string", "description": "Firebase Auth UID" },
         "subject": { "type": "string", "description": "Subject taught by teacher" },
@@ -14,7 +14,7 @@
         "phone": { "type": "string", "description": "Contact number" },
         "isApproved": { "type": "boolean", "description": "Whether the staff is approved by HeadOffice" }
       },
-      "required": ["name", "staffId", "role", "uid"]
+      "required": ["name", "staffCode", "role", "uid"]
     },
     "ExamStatus": {
       "title": "Exam Status",
@@ -107,6 +107,59 @@
         "year": { "type": "string", "description": "Academic year" }
       },
       "required": ["student_id", "date", "status", "class_id", "teacher_id"]
+    },
+    "Class": {
+      "title": "Class",
+      "description": "Class levels and streams",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Class name (e.g., Form 1)" },
+        "level": { "type": "string", "description": "Academic level" },
+        "streams": { "type": "array", "items": { "type": "string" }, "description": "List of streams (A, B, C)" },
+        "class_teachers": { "type": "object", "description": "Map of stream to teacher UID" }
+      },
+      "required": ["name", "level"]
+    },
+    "TeachingLog": {
+      "title": "Teaching Log",
+      "description": "Daily reports from teachers",
+      "type": "object",
+      "properties": {
+        "teacher_id": { "type": "string", "description": "Reference to teacher" },
+        "class_id": { "type": "string", "description": "Class taught" },
+        "subject": { "type": "string", "description": "Subject taught" },
+        "topic": { "type": "string", "description": "Topic covered" },
+        "method": { "type": "string", "description": "Teaching method" },
+        "outcomes": { "type": "string", "description": "Lesson outcomes" },
+        "homework": { "type": "string", "description": "Assignments given" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Submission time" }
+      },
+      "required": ["teacher_id", "class_id", "subject", "topic"]
+    },
+    "TeacherDocument": {
+      "title": "Teacher Document",
+      "description": "Personal documents for teachers",
+      "type": "object",
+      "properties": {
+        "teacher_id": { "type": "string", "description": "Reference to teacher" },
+        "title": { "type": "string", "description": "Document title" },
+        "category": { "type": "string", "description": "Category (Lesson Plan, Notes, etc.)" },
+        "file_url": { "type": "string", "description": "URL to the file" }
+      },
+      "required": ["teacher_id", "title", "file_url"]
+    },
+    "TeacherGoal": {
+      "title": "Teacher Goal",
+      "description": "Personal goals for teachers",
+      "type": "object",
+      "properties": {
+        "teacher_id": { "type": "string", "description": "Reference to teacher" },
+        "title": { "type": "string", "description": "Goal title" },
+        "description": { "type": "string", "description": "Goal description" },
+        "progress": { "type": "number", "description": "Progress percentage" },
+        "status": { "type": "string", "enum": ["Pending", "In Progress", "Completed"], "description": "Goal status" }
+      },
+      "required": ["teacher_id", "title", "status"]
     }
   },
   "firestore": {
@@ -117,6 +170,10 @@
     "shared_documents": { "schema": "SharedDocument", "description": "Shared files" },
     "messages": { "schema": "Message", "description": "Internal messages" },
     "exam_status": { "schema": "ExamStatus", "description": "Global exam entry status" },
-    "attendance": { "schema": "Attendance", "description": "Daily attendance records" }
+    "attendance": { "schema": "Attendance", "description": "Daily attendance records" },
+    "classes": { "schema": "Class", "description": "Class structures" },
+    "teaching_logs": { "schema": "TeachingLog", "description": "Teacher daily reports" },
+    "teacher_documents": { "schema": "TeacherDocument", "description": "Teacher personal files" },
+    "teacher_goals": { "schema": "TeacherGoal", "description": "Teacher personal goals" }
   }
 }

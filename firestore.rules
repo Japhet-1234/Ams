@@ -40,5 +40,21 @@ service cloud.firestore {
     match /shared_documents/{docId} {
       allow read, write: if true;
     }
+
+    match /classes/{classId} {
+      allow read, write: if true;
+    }
+
+    match /teaching_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    match /teacher_documents/{docId} {
+      allow read, write: if true;
+    }
+
+    match /teacher_goals/{goalId} {
+      allow read, write: if true;
+    }
   }
 }
