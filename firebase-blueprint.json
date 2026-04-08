@@ -1,0 +1,179 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System users with different roles",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name of the user" },
+        "staffCode": { "type": "string", "description": "Unique Staff ID for login" },
+        "role": { "type": "string", "enum": ["HeadOffice", "Academic", "Discipline", "Teacher"], "description": "User role" },
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "subject": { "type": "string", "description": "Subject taught by teacher" },
+        "class_id": { "type": "string", "description": "Class assigned to teacher" },
+        "phone": { "type": "string", "description": "Contact number" },
+        "isApproved": { "type": "boolean", "description": "Whether the staff is approved by HeadOffice" }
+      },
+      "required": ["name", "staffCode", "role", "uid"]
+    },
+    "ExamStatus": {
+      "title": "Exam Status",
+      "description": "Global status for exam score entry",
+      "type": "object",
+      "properties": {
+        "isActive": { "type": "boolean", "description": "Is score entry currently open" },
+        "term": { "type": "string", "description": "Current term" },
+        "year": { "type": "string", "description": "Current year" },
+        "updatedBy": { "type": "string", "description": "UID of the user who updated status" }
+      },
+      "required": ["isActive", "term", "year"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student records",
+      "type": "object",
+      "properties": {
+        "full_name": { "type": "string", "description": "Full name of the student" },
+        "registration_number": { "type": "string", "description": "Unique registration number" },
+        "class_id": { "type": "string", "description": "Class identifier" },
+        "discipline_remarks": { "type": "string", "description": "Conduct and discipline notes" },
+        "discipline_updated_at": { "type": "string", "format": "date-time", "description": "Last time discipline was updated" }
+      },
+      "required": ["full_name", "registration_number", "class_id"]
+    },
+    "GradingSetting": {
+      "title": "Grading Setting",
+      "description": "Configuration for grading scales",
+      "type": "object",
+      "properties": {
+        "grade_name": { "type": "string", "description": "Grade label (A, B, C, etc.)" },
+        "min_score": { "type": "number", "description": "Minimum score for this grade" },
+        "max_score": { "type": "number", "description": "Maximum score for this grade" },
+        "remarks": { "type": "string", "description": "Teacher remarks for this grade" }
+      },
+      "required": ["grade_name", "min_score", "max_score"]
+    },
+    "ExamResult": {
+      "title": "Exam Result",
+      "description": "Student exam scores",
+      "type": "object",
+      "properties": {
+        "student_id": { "type": "string", "description": "Reference to student" },
+        "subject_name": { "type": "string", "description": "Name of the subject" },
+        "score": { "type": "number", "description": "Score obtained" },
+        "teacher_id": { "type": "string", "description": "Reference to teacher who entered the score" },
+        "term": { "type": "string", "description": "Academic term" },
+        "year": { "type": "string", "description": "Academic year" }
+      },
+      "required": ["student_id", "subject_name", "score", "teacher_id", "term", "year"]
+    },
+    "SharedDocument": {
+      "title": "Shared Document",
+      "description": "Documents shared between users",
+      "type": "object",
+      "properties": {
+        "sender_id": { "type": "string", "description": "Reference to sender" },
+        "receiver_role": { "type": "string", "description": "Role allowed to view this document" },
+        "file_name": { "type": "string", "description": "Name of the file" },
+        "file_path": { "type": "string", "description": "Storage path for the file" },
+        "category": { "type": "string", "enum": ["Exam", "Report", "Memo"], "description": "Document category" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["sender_id", "receiver_role", "file_name", "file_path", "category"]
+    },
+    "Message": {
+      "title": "Internal Message",
+      "description": "Internal messaging system",
+      "type": "object",
+      "properties": {
+        "sender_id": { "type": "string", "description": "Reference to sender" },
+        "receiver_id": { "type": "string", "description": "Reference to receiver" },
+        "content": { "type": "string", "description": "Message content" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["sender_id", "receiver_id", "content"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Daily student attendance records",
+      "type": "object",
+      "properties": {
+        "student_id": { "type": "string", "description": "Reference to student" },
+        "date": { "type": "string", "format": "date", "description": "Date of attendance (YYYY-MM-DD)" },
+        "status": { "type": "string", "enum": ["Present", "Absent", "Late"], "description": "Attendance status" },
+        "class_id": { "type": "string", "description": "Class identifier" },
+        "teacher_id": { "type": "string", "description": "Reference to teacher who took attendance" },
+        "term": { "type": "string", "description": "Academic term" },
+        "year": { "type": "string", "description": "Academic year" }
+      },
+      "required": ["student_id", "date", "status", "class_id", "teacher_id"]
+    },
+    "Class": {
+      "title": "Class",
+      "description": "Class levels and streams",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Class name (e.g., Form 1)" },
+        "level": { "type": "string", "description": "Academic level" },
+        "streams": { "type": "array", "items": { "type": "string" }, "description": "List of streams (A, B, C)" },
+        "class_teachers": { "type": "object", "description": "Map of stream to teacher UID" }
+      },
+      "required": ["name", "level"]
+    },
+    "TeachingLog": {
+      "title": "Teaching Log",
+      "description": "Daily reports from teachers",
+      "type": "object",
+      "properties": {
+        "teacher_id": { "type": "string", "description": "Reference to teacher" },
+        "class_id": { "type": "string", "description": "Class taught" },
+        "subject": { "type": "string", "description": "Subject taught" },
+        "topic": { "type": "string", "description": "Topic covered" },
+        "method": { "type": "string", "description": "Teaching method" },
+        "outcomes": { "type": "string", "description": "Lesson outcomes" },
+        "homework": { "type": "string", "description": "Assignments given" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Submission time" }
+      },
+      "required": ["teacher_id", "class_id", "subject", "topic"]
+    },
+    "TeacherDocument": {
+      "title": "Teacher Document",
+      "description": "Personal documents for teachers",
+      "type": "object",
+      "properties": {
+        "teacher_id": { "type": "string", "description": "Reference to teacher" },
+        "title": { "type": "string", "description": "Document title" },
+        "category": { "type": "string", "description": "Category (Lesson Plan, Notes, etc.)" },
+        "file_url": { "type": "string", "description": "URL to the file" }
+      },
+      "required": ["teacher_id", "title", "file_url"]
+    },
+    "TeacherGoal": {
+      "title": "Teacher Goal",
+      "description": "Personal goals for teachers",
+      "type": "object",
+      "properties": {
+        "teacher_id": { "type": "string", "description": "Reference to teacher" },
+        "title": { "type": "string", "description": "Goal title" },
+        "description": { "type": "string", "description": "Goal description" },
+        "progress": { "type": "number", "description": "Progress percentage" },
+        "status": { "type": "string", "enum": ["Pending", "In Progress", "Completed"], "description": "Goal status" }
+      },
+      "required": ["teacher_id", "title", "status"]
+    }
+  },
+  "firestore": {
+    "users": { "schema": "User", "description": "System users" },
+    "students": { "schema": "Student", "description": "Student records" },
+    "grading_settings": { "schema": "GradingSetting", "description": "Grading configurations" },
+    "exam_results": { "schema": "ExamResult", "description": "Exam scores" },
+    "shared_documents": { "schema": "SharedDocument", "description": "Shared files" },
+    "messages": { "schema": "Message", "description": "Internal messages" },
+    "exam_status": { "schema": "ExamStatus", "description": "Global exam entry status" },
+    "attendance": { "schema": "Attendance", "description": "Daily attendance records" },
+    "classes": { "schema": "Class", "description": "Class structures" },
+    "teaching_logs": { "schema": "TeachingLog", "description": "Teacher daily reports" },
+    "teacher_documents": { "schema": "TeacherDocument", "description": "Teacher personal files" },
+    "teacher_goals": { "schema": "TeacherGoal", "description": "Teacher personal goals" }
+  }
+}
