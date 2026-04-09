@@ -36,7 +36,8 @@ import {
   serverTimestamp,
   getDocFromServer,
   getDocs,
-  or
+  or,
+  and
 } from 'firebase/firestore';
 import { 
   ref, 
@@ -482,77 +483,60 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 const LoadingScreen = () => (
-  <div className="flex items-center justify-center min-h-screen bg-slate-50">
+  <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950">
     <motion.div 
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="flex flex-col items-center gap-4"
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      className="relative"
     >
-      <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-      <p className="text-slate-600 font-medium">Inapakia mfumo...</p>
+      <div className="w-20 h-20 border-4 border-indigo-100 dark:border-indigo-900/30 rounded-full" />
+      <div className="w-20 h-20 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin absolute top-0" />
+      <GraduationCap className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-600" size={32} />
     </motion.div>
+    <p className="mt-6 text-slate-500 dark:text-slate-400 font-bold animate-pulse">Inapakia mfumo...</p>
   </div>
 );
 
 const PageLoading = () => (
-  <div className="flex items-center justify-center py-20 w-full">
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="flex flex-col items-center gap-3"
-    >
-      <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-      <p className="text-xs text-slate-400 font-medium">Inapakia taarifa...</p>
-    </motion.div>
+  <div className="h-64 flex items-center justify-center">
+    <div className="w-10 h-10 border-4 border-indigo-100 dark:border-indigo-900/30 border-t-indigo-600 rounded-full animate-spin" />
   </div>
 );
 
 const Login = ({ onLogin }: { onLogin: (user: UserProfile) => void }) => {
-  const [step, setStep] = useState<'type' | 'office' | 'credentials'>('type');
-  const [loginType, setLoginType] = useState<'Staff' | 'Officer'>('Staff');
-  const [selectedOffice, setSelectedOffice] = useState<UserRole | null>(null);
+  const [activeTab, setActiveTab] = useState<'Teacher' | 'Officer'>('Teacher');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   
-  const [name, setName] = useState(() => localStorage.getItem('ams_remembered_name') || '');
+  const [identifier, setIdentifier] = useState(() => localStorage.getItem('ams_remembered_identifier') || '');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [selectedOffice, setSelectedOffice] = useState<UserRole>('Academic');
+  
   const [error, setError] = useState('');
-  const [rememberMe, setRememberMe] = useState(!!localStorage.getItem('ams_remembered_name'));
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
-    
-    const trimmedName = loginType === 'Officer' ? (selectedOffice === 'HeadOffice' ? 'Head Master' : selectedOffice === 'Academic' ? 'Academic Officer' : 'Discipline Officer') : name.trim();
-    
-    if (loginType === 'Staff' && trimmedName.length < 3) {
-      setError('Tafadhali weka jina lako kamili (angalau herufi 3).');
-      setIsLoading(false);
-      return;
-    }
-
-    if (rememberMe) {
-      localStorage.setItem('ams_remembered_name', trimmedName);
-    } else {
-      localStorage.removeItem('ams_remembered_name');
-    }
-
-    const officerPasswords: Record<string, string> = {
-      'HeadOffice': 'head123',
-      'Academic': 'acad456',
-      'Discipline': 'disc789'
-    };
 
     try {
-      if (loginType === 'Officer') {
-        const correctPassword = officerPasswords[selectedOffice as string];
+      if (activeTab === 'Officer') {
+        const officerPasswords: Record<string, string> = {
+          'HeadOffice': 'head123',
+          'Academic': 'acad456',
+          'Discipline': 'disc789'
+        };
+
+        const correctPassword = officerPasswords[selectedOffice];
         if (password !== correctPassword) {
           setError('Nywila ya ofisi si sahihi.');
           setIsLoading(false);
           return;
         }
 
-        // Search for existing officer record or create one
         const q = query(collection(db, 'users'), where('role', '==', selectedOffice));
         const result = await getDocs(q);
 
@@ -571,44 +555,87 @@ const Login = ({ onLogin }: { onLogin: (user: UserProfile) => void }) => {
           await setDoc(doc(db, 'users', uid), officerData);
           localStorage.setItem('ams_user_uid', uid);
           onLogin(officerData as UserProfile);
-          return;
         } else {
           const userData = result.docs[0].data() as UserProfile;
-          await updateDoc(doc(db, 'users', userData.uid), {
-            lastLogin: serverTimestamp()
-          });
+          await updateDoc(doc(db, 'users', userData.uid), { lastLogin: serverTimestamp() });
           localStorage.setItem('ams_user_uid', userData.uid);
           onLogin(userData);
-          return;
         }
       } else {
-        // Staff login logic - Strictly by Name matching the registration database
-        // We search for users who are NOT officers (Teachers, Staff, etc.)
-        const q = query(
-          collection(db, 'users'), 
-          where('name', '==', trimmedName)
-        );
-        const result = await getDocs(q);
-        
-        if (result.empty) {
-          setError('Jina lako halijapatikana kwenye kanzidata ya usajili. Tafadhali wasiliana na Mtaaluma (Academic Office) ili usajiliwe.');
-        } else {
-          const userData = result.docs[0].data() as UserProfile;
-          
-          // Ensure officers cannot bypass password by using staff login
-          const officerRoles = ['HeadOffice', 'Academic', 'Discipline'];
-          if (officerRoles.includes(userData.role)) {
-            setError('Tafadhali tumia sehemu ya "Ofisi" kuingia kwenye mfumo.');
+        // Teacher Login/Register
+        if (mode === 'register') {
+          const trimmedName = name.trim();
+          const trimmedPhone = phone.trim();
+
+          if (trimmedName.length < 3 || trimmedPhone.length < 8 || password.length < 4) {
+            setError('Tafadhali jaza taarifa zote kwa usahihi (Nywila angalau herufi 4).');
             setIsLoading(false);
             return;
           }
 
-          await updateDoc(doc(db, 'users', userData.uid), {
-            lastLogin: serverTimestamp()
-          });
+          if (password !== confirmPassword) {
+            setError('Nywila hazilingani. Tafadhali kagua tena.');
+            setIsLoading(false);
+            return;
+          }
 
-          localStorage.setItem('ams_user_uid', userData.uid);
-          onLogin(userData);
+          // Check if user already exists
+          const q = query(collection(db, 'users'), where('phone', '==', trimmedPhone));
+          const result = await getDocs(q);
+          
+          if (!result.empty) {
+            setError('Namba hii ya simu tayari imesajiliwa. Tafadhali ingia.');
+            setIsLoading(false);
+            return;
+          }
+
+          const uid = `teacher_${Date.now()}`;
+          const teacherData = {
+            uid,
+            name: trimmedName,
+            phone: trimmedPhone,
+            password: password,
+            role: 'Teacher',
+            staffCode: `TCH-${Math.floor(1000 + Math.random() * 9000)}`,
+            isApproved: false,
+            createdAt: serverTimestamp(),
+            lastLogin: serverTimestamp()
+          };
+          
+          await setDoc(doc(db, 'users', uid), teacherData);
+          localStorage.setItem('ams_user_uid', uid);
+          localStorage.setItem('ams_remembered_identifier', trimmedPhone);
+          onLogin(teacherData as UserProfile);
+        } else {
+          // Login
+          const trimmedIdentifier = identifier.trim();
+          if (!trimmedIdentifier || !password) {
+            setError('Tafadhali jaza jina/namba ya simu na nywila.');
+            setIsLoading(false);
+            return;
+          }
+
+          const q = query(
+            collection(db, 'users'), 
+            and(
+              or(
+                where('name', '==', trimmedIdentifier),
+                where('phone', '==', trimmedIdentifier)
+              ),
+              where('password', '==', password)
+            )
+          );
+          const result = await getDocs(q);
+          
+          if (result.empty) {
+            setError('Taarifa zako hazijapatikana au nywila si sahihi.');
+          } else {
+            const userData = result.docs[0].data() as UserProfile;
+            await updateDoc(doc(db, 'users', userData.uid), { lastLogin: serverTimestamp() });
+            localStorage.setItem('ams_user_uid', userData.uid);
+            localStorage.setItem('ams_remembered_identifier', trimmedIdentifier);
+            onLogin(userData);
+          }
         }
       }
     } catch (err: any) {
@@ -619,147 +646,186 @@ const Login = ({ onLogin }: { onLogin: (user: UserProfile) => void }) => {
     }
   };
 
-  const renderStep = () => {
-    switch (step) {
-      case 'type':
-        return (
-          <div className="grid grid-cols-2 gap-4">
-            <button 
-              onClick={() => { setLoginType('Staff'); setStep('credentials'); }}
-              className="p-6 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50 transition-all flex flex-col items-center gap-3 group"
-            >
-              <div className="p-4 bg-indigo-100 rounded-full text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                <Users size={32} />
-              </div>
-              <span className="font-bold text-slate-700">Walimu (Staff)</span>
-            </button>
-            <button 
-              onClick={() => { setLoginType('Officer'); setStep('office'); }}
-              className="p-6 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50 transition-all flex flex-col items-center gap-3 group"
-            >
-              <div className="p-4 bg-purple-100 rounded-full text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-all">
-                <Building2 size={32} />
-              </div>
-              <span className="font-bold text-slate-700">Ofisi (Officers)</span>
-            </button>
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
+      <motion.div 
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl max-w-md w-full border border-slate-100 dark:border-slate-800"
+      >
+        <div className="text-center mb-8">
+          <div className="mb-4 inline-flex p-4 bg-indigo-100 dark:bg-indigo-900/30 rounded-2xl text-indigo-600 dark:text-indigo-400">
+            <GraduationCap size={40} />
           </div>
-        );
-      case 'office':
-        return (
-          <div className="space-y-4">
-            <button onClick={() => setStep('type')} className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 mb-4 transition-all">
-              <ArrowLeft size={18} />
-              <span className="text-sm font-medium">Rudi Nyuma</span>
-            </button>
-            <div className="grid grid-cols-1 gap-3">
-              {[
-                { id: 'HeadOffice', label: 'Mkuu wa Shule (Head Office)', icon: ShieldCheck, color: 'text-amber-600', bg: 'bg-amber-50' },
-                { id: 'Academic', label: 'Taaluma (Academic Office)', icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50' },
-                { id: 'Discipline', label: 'Nidhamu (Discipline Office)', icon: ShieldCheck, color: 'text-red-600', bg: 'bg-red-50' }
-              ].map((office) => (
-                <button 
-                  key={office.id}
-                  onClick={() => { setSelectedOffice(office.id as UserRole); setStep('credentials'); }}
-                  className="flex items-center gap-4 p-4 rounded-xl border border-slate-100 hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left group"
-                >
-                  <div className={`p-3 ${office.bg} ${office.color} rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-all`}>
-                    <office.icon size={24} />
-                  </div>
-                  <span className="font-bold text-slate-700">{office.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-      case 'credentials':
-        return (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <button onClick={() => setStep(loginType === 'Officer' ? 'office' : 'type')} className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 mb-4 transition-all">
-              <ArrowLeft size={18} />
-              <span className="text-sm font-medium">Rudi Nyuma</span>
-            </button>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Academic Management</h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Mfumo wa Usimamizi wa Shule</p>
+        </div>
 
-            {loginType === 'Staff' ? (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Majina Matatu (Full Name)</label>
-                <input 
-                  required
-                  type="text" 
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="mf. Japhet Sunday"
-                />
-              </div>
-            ) : (
-              <>
-                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100 mb-4">
-                  <p className="text-sm text-indigo-600 font-medium">Unaingia kama:</p>
-                  <p className="text-lg font-bold text-indigo-900">
-                    {selectedOffice === 'HeadOffice' ? 'Head Master' : selectedOffice === 'Academic' ? 'Academic Officer' : 'Discipline Officer'}
-                  </p>
-                </div>
+        <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mb-6">
+          <button 
+            onClick={() => { setActiveTab('Teacher'); setMode('login'); setPassword(''); setConfirmPassword(''); setError(''); }}
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'Teacher' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Walimu
+          </button>
+          <button 
+            onClick={() => { setActiveTab('Officer'); setMode('login'); setPassword(''); setConfirmPassword(''); setError(''); }}
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'Officer' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Ofisi
+          </button>
+        </div>
+
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="mb-6 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-medium rounded-xl border border-red-100 dark:border-red-900/30 flex items-center gap-2"
+          >
+            <AlertTriangle size={14} />
+            {error}
+          </motion.div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {activeTab === 'Teacher' ? (
+            <>
+              {mode === 'login' ? (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Nywila (Password)</label>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Jina au Namba ya Simu</label>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input 
+                      required
+                      type="text" 
+                      className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                      value={identifier}
+                      onChange={e => setIdentifier(e.target.value)}
+                      placeholder="Jina au Simu"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Jina Kamili</label>
+                    <div className="relative">
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input 
+                        required
+                        type="text" 
+                        className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                        placeholder="mf. Japhet Sunday"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Namba ya Simu</label>
+                    <div className="relative">
+                      <Zap className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input 
+                        required
+                        type="tel" 
+                        className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                        value={phone}
+                        onChange={e => setPhone(e.target.value)}
+                        placeholder="mf. 0712345678"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Nywila (Password)</label>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                   <input 
                     required
                     type="password" 
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     placeholder="******"
                   />
                 </div>
+              </div>
+              {mode === 'register' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Hakiki Nywila (Confirm Password)</label>
+                  <div className="relative">
+                    <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input 
+                      required
+                      type="password" 
+                      className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      placeholder="******"
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Chagua Ofisi</label>
+                <select 
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  value={selectedOffice}
+                  onChange={e => setSelectedOffice(e.target.value as UserRole)}
+                >
+                  <option value="HeadOffice">Mkuu wa Shule (Head Master)</option>
+                  <option value="Academic">Taaluma (Academic Office)</option>
+                  <option value="Discipline">Nidhamu (Discipline Office)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Nywila (Password)</label>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input 
+                    required
+                    type="password" 
+                    className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="******"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          <button 
+            type="submit"
+            disabled={isLoading}
+            className="w-full bg-indigo-600 text-white py-3.5 px-4 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 dark:shadow-none disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {isLoading ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <LogIn size={18} />
+                {activeTab === 'Teacher' ? (mode === 'login' ? 'Ingia Sasa' : 'Jisajili Sasa') : 'Ingia Ofisini'}
               </>
             )}
+          </button>
 
-            <div className="flex items-center gap-2 px-1">
-              <input 
-                type="checkbox" 
-                id="rememberMe"
-                checked={rememberMe}
-                onChange={e => setRememberMe(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-              />
-              <label htmlFor="rememberMe" className="text-sm text-slate-600 cursor-pointer font-medium">Nikumbuke (Remember Me)</label>
+          {activeTab === 'Teacher' && (
+            <div className="text-center mt-4">
+              <button 
+                type="button"
+                onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setPassword(''); setConfirmPassword(''); }}
+                className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                {mode === 'login' ? 'Huna akaunti? Jisajili hapa' : 'Tayari una akaunti? Ingia hapa'}
+              </button>
             </div>
-
-            <button 
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-indigo-600 text-white py-3 px-4 rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50"
-            >
-              {isLoading ? 'Inapakia...' : 'Ingia (Login)'}
-            </button>
-          </form>
-        );
-    }
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 p-4">
-      <motion.div 
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full"
-      >
-        <div className="text-center mb-8">
-          <div className="mb-6 inline-flex p-4 bg-indigo-100 rounded-full text-indigo-600">
-            <GraduationCap size={48} />
-          </div>
-          <h1 className="text-3xl font-bold text-slate-800 mb-2">Academic Management</h1>
-          <p className="text-slate-500">
-            Chagua aina ya akaunti yako.
-          </p>
-        </div>
-
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-xl border border-red-100">
-            {error}
-          </div>
-        )}
-
-        {renderStep()}
+          )}
+        </form>
       </motion.div>
     </div>
   );
@@ -1015,9 +1081,16 @@ const TimetableManagement = ({ user }: { user: UserProfile }) => {
     }
   };
 
-  if (loading) return <PageLoading />;
-
-  const canEdit = user.role === 'Academic';
+  const handleEditClick = (day: string, period: number) => {
+    const canEdit = user.role === 'Academic';
+    if (!canEdit) return;
+    const entry = timetable.find(t => t.class_id === selectedClass && t.stream === selectedStream && t.day === day && t.period === period);
+    setIsEditing({ day, period });
+    setEditForm({ 
+      subject_id: entry?.subject_id || '', 
+      teacher_id: entry?.teacher_id || '' 
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -1103,7 +1176,7 @@ const TimetableManagement = ({ user }: { user: UserProfile }) => {
                       return (
                         <td key={day} className="p-2">
                           <div 
-                            onClick={() => canEdit && setIsEditing({ day, period: p.id as number })}
+                            onClick={() => handleEditClick(day, p.id as number)}
                             className={`min-h-[80px] p-3 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col justify-center items-center text-center ${
                               entry 
                                 ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-800' 
@@ -1263,6 +1336,7 @@ const AcademicOfficerDashboard = ({ user }: { user: UserProfile }) => {
 
     // Alerts
     const missingLogs = staff.filter(s => s.role === 'Teacher' && !teachingLogs.some(l => l.teacher_id === s.uid));
+    const pendingTeachers = staff.filter(s => s.role === 'Teacher' && !s.isApproved);
     
     return { 
       totalStudents, 
@@ -1271,6 +1345,7 @@ const AcademicOfficerDashboard = ({ user }: { user: UserProfile }) => {
       topPerformers, 
       strugglingStudents, 
       missingLogs, 
+      pendingTeachers,
       attendanceRate,
       irregularAttendance
     };
@@ -1393,6 +1468,20 @@ const AcademicOfficerDashboard = ({ user }: { user: UserProfile }) => {
           Tahadhari za Haraka (Urgent Alerts)
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {stats.pendingTeachers.map(t => (
+            <div key={t.uid} className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-900/30">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-indigo-200 dark:bg-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-xs">
+                  {t.name.charAt(0)}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-800 dark:text-white">{t.name}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Mwalimu Mpya - Anahitaji Usajili</p>
+                </div>
+              </div>
+              <Link to="/staff" className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase hover:underline">Kamilisha</Link>
+            </div>
+          ))}
           {stats.strugglingStudents.map(s => (
             <div key={s.id} className="flex items-center justify-between p-3 bg-rose-50 dark:bg-rose-900/20 rounded-xl border border-rose-100 dark:border-rose-900/30">
               <div className="flex items-center gap-3">
@@ -1441,8 +1530,95 @@ const AcademicOfficerDashboard = ({ user }: { user: UserProfile }) => {
   );
 };
 
+const TeacherTimetable = ({ user }: { user: UserProfile }) => {
+  const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const periods = [
+    { id: 1, time: '08:00 - 09:20', type: 'Double' },
+    { id: 2, time: '09:20 - 10:40', type: 'Double' },
+    { id: 'break1', time: '10:40 - 11:00', type: 'Break', label: 'Mapumziko Mafupi' },
+    { id: 3, time: '11:00 - 12:20', type: 'Double' },
+    { id: 4, time: '12:20 - 13:00', type: 'Single' },
+    { id: 'break2', time: '13:00 - 14:00', type: 'Break', label: 'Mapumziko ya Mchana' },
+    { id: 5, time: '14:00 - 15:20', type: 'Double' },
+  ];
+
+  useEffect(() => {
+    const unsubTimetable = onSnapshot(query(collection(db, 'timetable'), where('teacher_id', '==', user.uid)), (snap) => {
+      setTimetable(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimetableEntry)));
+      setLoading(false);
+    });
+    const unsubClasses = onSnapshot(collection(db, 'classes'), (snap) => {
+      setClasses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Class)));
+    });
+    const unsubSubjects = onSnapshot(collection(db, 'subjects'), (snap) => {
+      setSubjects(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Subject)));
+    });
+    return () => { unsubTimetable(); unsubClasses(); unsubSubjects(); };
+  }, [user.uid]);
+
+  if (loading) return <div className="p-12 text-center text-slate-400">Inapakia ratiba...</div>;
+
+  return (
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-slate-50 dark:bg-slate-800/50">
+              <th className="p-4 text-left text-xs font-bold text-slate-400 uppercase border-b border-slate-100 dark:border-slate-800">Saa / Kipindi</th>
+              {days.map(day => (
+                <th key={day} className="p-4 text-left text-xs font-bold text-slate-400 uppercase border-b border-slate-100 dark:border-slate-800">{day}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {periods.map(p => {
+              if (p.type === 'Break') {
+                return (
+                  <tr key={p.id} className="bg-slate-50/50 dark:bg-slate-800/30">
+                    <td className="p-4 text-xs font-bold text-slate-400 text-center" colSpan={6}>
+                      {p.time} - {p.label}
+                    </td>
+                  </tr>
+                );
+              }
+              return (
+                <tr key={p.id} className="border-b border-slate-50 dark:border-slate-800/50">
+                  <td className="p-4 text-xs font-bold text-slate-500 bg-slate-50/30 dark:bg-slate-800/20">{p.time}</td>
+                  {days.map(day => {
+                    const entry = timetable.find(t => t.day === day && t.period === p.id);
+                    const subject = subjects.find(s => s.id === entry?.subject_id);
+                    const cls = classes.find(c => c.id === entry?.class_id);
+                    
+                    return (
+                      <td key={day} className="p-4 min-w-[120px]">
+                        {entry ? (
+                          <div className="space-y-1">
+                            <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{subject?.name || 'Somo'}</p>
+                            <p className="text-[10px] font-medium text-slate-500">{cls?.name || 'Darasa'} {entry.stream}</p>
+                          </div>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 const TeacherOffice = ({ user }: { user: UserProfile }) => {
-  const [activeTab, setActiveTab] = useState<'logs' | 'docs' | 'goals'>('logs');
+  const [activeTab, setActiveTab] = useState<'logs' | 'docs' | 'goals' | 'timetable'>('logs');
   const [logs, setLogs] = useState<TeachingLog[]>([]);
   const [docs, setDocs] = useState<TeacherDocument[]>([]);
   const [goals, setGoals] = useState<TeacherGoal[]>([]);
@@ -1480,16 +1656,27 @@ const TeacherOffice = ({ user }: { user: UserProfile }) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4 border-b border-slate-100 dark:border-slate-800">
+      {!user.isApproved && (
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-center gap-4">
+          <AlertTriangle className="text-amber-500" size={24} />
+          <div>
+            <p className="text-amber-800 font-bold">Akaunti yako bado haijathibitishwa kikamilifu</p>
+            <p className="text-amber-600 text-sm">Mtaaluma anamalizia usajili wako (kuweka masomo na darasa). Unaweza kuendelea kutumia mfumo kwa sasa.</p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-4 border-b border-slate-100 dark:border-slate-800 overflow-x-auto">
         {[
           { id: 'logs', label: 'Teaching Logs', icon: FileText },
+          { id: 'timetable', label: 'Ratiba Yangu', icon: Calendar },
           { id: 'docs', label: 'Documents', icon: BookOpen },
           { id: 'goals', label: 'Goals', icon: Target },
         ].map(tab => (
           <button 
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 ${
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${
               activeTab === tab.id 
                 ? 'border-indigo-600 text-indigo-600' 
                 : 'border-transparent text-slate-400 hover:text-slate-600'
@@ -1501,6 +1688,7 @@ const TeacherOffice = ({ user }: { user: UserProfile }) => {
         ))}
       </div>
 
+      {activeTab === 'timetable' && <TeacherTimetable user={user} />}
       {activeTab === 'logs' && (
         <div className="space-y-6">
           <div className="flex justify-between items-center">
@@ -2143,7 +2331,7 @@ const StaffManagement = () => {
         await setDoc(doc(db, 'users', uid), {
           uid,
           ...formData,
-          password: '', // No password for staff
+          password: '1234', // Default password for staff created by admin
           staffCode,
           isApproved: true,
           createdAt: serverTimestamp()
@@ -2153,7 +2341,7 @@ const StaffManagement = () => {
       setIsEditing(null);
       // Keep role and class_id to reduce repetition
       setFormData(prev => ({ ...prev, name: '', subject: '', phone: '' }));
-      alert('Mfanyakazi amehifadhiwa kwa mafanikio!');
+      alert('Mfanyakazi amehifadhiwa kwa mafanikio! Nywila ya awali ni 1234');
     } catch (error) {
       handleFirestoreError(error, isEditing ? OperationType.UPDATE : OperationType.CREATE, 'users');
     } finally {
@@ -2712,6 +2900,16 @@ const ClassManagement = () => {
     }
   };
 
+  const handleDeleteClass = async (id: string) => {
+    if (confirm('Je, una uhakika unataka kufuta darasa hili?')) {
+      try {
+        await deleteDoc(doc(db, 'classes', id));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, 'classes');
+      }
+    }
+  };
+
   if (loading) return <PageLoading />;
 
   return (
@@ -2745,6 +2943,12 @@ const ClassManagement = () => {
                       Stream {s}
                     </span>
                   ))}
+                  <button 
+                    onClick={() => handleDeleteClass(cls.id!)}
+                    className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               </div>
 
@@ -4745,7 +4949,7 @@ export default function App() {
       // Safety timeout for loading
       const timeoutId = setTimeout(() => {
         setLoading(false);
-      }, 500); // Further reduced to 500ms
+      }, 1000); // 1 second safety timeout
 
       const unsub = onSnapshot(doc(db, 'users', localUid), async (snap) => {
         if (snap.exists()) {
@@ -4796,12 +5000,12 @@ export default function App() {
   if (!user) return <Login onLogin={setUser} />;
 
   // Force profile setup for users who have logged in but haven't filled it yet
-  if (!['HeadOffice', 'Academic', 'Discipline'].includes(user.role) && (!user.role || !user.phone)) {
+  if (!['HeadOffice', 'Academic', 'Discipline'].includes(user.role) && (!user.role || !user.phone || (user.role === 'Teacher' && !user.subject))) {
     return <ProfileSetup user={user} onComplete={() => window.location.href = '/'} />;
   }
 
-  // Block unapproved staff (except Officers)
-  if (!['HeadOffice', 'Academic', 'Discipline'].includes(user.role) && !user.isApproved) {
+  // Block unapproved staff (except Officers and Teachers)
+  if (!['HeadOffice', 'Academic', 'Discipline', 'Teacher'].includes(user.role) && !user.isApproved) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center">

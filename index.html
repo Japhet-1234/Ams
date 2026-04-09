@@ -1,15 +1,731 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Academic Management System (AMS)</title>
-    <meta name="description" content="Mfumo wa kisasa wa usimamizi wa shule unaojumuisha usimamizi wa wanafunzi, upangaji wa gredi, uingizaji wa alama, na mawasiliano ya ndani." />
-    <meta name="theme-color" content="#4f46e5" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+<!DOCTYPE html>
+<html lang="sw" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMS - School Management System</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        indigo: {
+                            50: '#f5f7ff',
+                            100: '#ebf0fe',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
 
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- jsPDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        [x-cloak] { display: none !important; }
+        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); }
+        .dark .glass { background: rgba(15, 23, 42, 0.8); }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300" 
+      x-data="amsApp()" 
+      x-init="init()"
+      :class="{ 'dark': isDarkMode }">
+
+    <!-- Loading Screen -->
+    <div x-show="loading" class="fixed inset-0 z-[100] bg-white dark:bg-slate-950 flex flex-col items-center justify-center">
+        <div class="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-slate-500 font-bold animate-pulse">Inapakia Mfumo...</p>
+    </div>
+
+    <!-- Login Screen -->
+    <div x-show="!user" x-cloak class="min-h-screen flex items-center justify-center p-4 bg-indigo-50 dark:bg-slate-950">
+        <div class="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl max-w-md w-full border border-white dark:border-slate-800">
+            <div class="text-center mb-8">
+                <div class="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-xl rotate-3">
+                    <i data-lucide="graduation-cap" class="text-white w-10 h-10"></i>
+                </div>
+                <h1 class="text-3xl font-black text-slate-800 dark:text-white tracking-tight" x-text="schoolName"></h1>
+                <p class="text-slate-500 font-medium">Karibu kwenye Mfumo wa AMS</p>
+            </div>
+
+            <div class="flex gap-2 mb-6 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+                <button @click="loginType = 'Staff'" :class="loginType === 'Staff' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600' : 'text-slate-500'" class="flex-1 py-2 rounded-xl font-bold transition-all">Mfanyakazi</button>
+                <button @click="loginType = 'Student'" :class="loginType === 'Student' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600' : 'text-slate-500'" class="flex-1 py-2 rounded-xl font-bold transition-all">Mwanafunzi</button>
+            </div>
+
+            <form @submit.prevent="handleLogin" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Jina Kamili</label>
+                    <input type="text" x-model="loginForm.name" required class="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1" x-text="loginType === 'Staff' ? 'Neno la Siri' : 'Namba ya Usajili'"></label>
+                    <input :type="loginType === 'Staff' ? 'password' : 'text'" x-model="loginForm.password" required class="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                </div>
+                <div x-show="loginType === 'Staff'">
+                    <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Nafasi (Role)</label>
+                    <select x-model="loginForm.role" class="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 dark:bg-slate-800 outline-none bg-white dark:bg-slate-800">
+                        <option value="Teacher">Mwalimu</option>
+                        <option value="Academic">Academic Officer</option>
+                        <option value="Discipline">Discipline Officer</option>
+                        <option value="HeadOffice">Head Master/Mistress</option>
+                    </select>
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-indigo-700 shadow-lg shadow-indigo-200 dark:shadow-none transition-all active:scale-95">Ingia Mfumo</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Layout -->
+    <div x-show="user" x-cloak class="min-h-screen flex">
+        
+        <!-- Sidebar -->
+        <aside class="w-72 bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-800 flex flex-col fixed inset-y-0 z-50 transition-transform lg:translate-x-0" :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
+            <div class="p-6 flex items-center gap-3 border-b border-slate-50 dark:border-slate-800">
+                <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <i data-lucide="graduation-cap" class="text-white w-6 h-6"></i>
+                </div>
+                <span class="font-black text-xl tracking-tight" x-text="schoolName"></span>
+            </div>
+
+            <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
+                <template x-for="item in menuItems" :key="item.id">
+                    <button @click="currentView = item.id; sidebarOpen = false" 
+                            :class="currentView === item.id ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-bold' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'"
+                            class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all group">
+                        <i :data-lucide="item.icon" class="w-5 h-5 transition-transform group-hover:scale-110"></i>
+                        <span x-text="item.label"></span>
+                    </button>
+                </template>
+            </nav>
+
+            <div class="p-6 border-t border-slate-50 dark:border-slate-800">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-indigo-600 font-bold" x-text="user?.name?.charAt(0)"></div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-bold truncate" x-text="user?.name"></p>
+                        <p class="text-[10px] text-slate-500 uppercase font-black tracking-widest" x-text="user?.role"></p>
+                    </div>
+                </div>
+                <button @click="logout" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all font-bold">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                    Ondoka
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 lg:ml-72 min-h-screen flex flex-col">
+            <!-- Header -->
+            <header class="h-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 flex items-center justify-between px-8 sticky top-0 z-40">
+                <div class="flex items-center gap-4">
+                    <button @click="sidebarOpen = true" class="lg:hidden p-2 text-slate-500"><i data-lucide="menu"></i></button>
+                    <h2 class="text-xl font-black text-slate-800 dark:text-white" x-text="getViewTitle()"></h2>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button @click="toggleDarkMode" class="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl text-slate-600 dark:text-slate-400 hover:scale-110 transition-all">
+                        <i :data-lucide="isDarkMode ? 'sun' : 'moon'" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- View Content -->
+            <div class="p-8 flex-1">
+                
+                <!-- Dashboard View -->
+                <div x-show="currentView === 'dashboard'" class="space-y-8">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div class="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
+                            <div class="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mb-4">
+                                <i data-lucide="users" class="w-6 h-6"></i>
+                            </div>
+                            <p class="text-slate-500 text-sm font-bold uppercase tracking-wider">Wanafunzi</p>
+                            <h3 class="text-3xl font-black mt-1" x-text="stats.students">0</h3>
+                        </div>
+                        <div class="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
+                            <div class="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mb-4">
+                                <i data-lucide="user-cog" class="w-6 h-6"></i>
+                            </div>
+                            <p class="text-slate-500 text-sm font-bold uppercase tracking-wider">Walimu</p>
+                            <h3 class="text-3xl font-black mt-1" x-text="stats.teachers">0</h3>
+                        </div>
+                        <div class="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
+                            <div class="w-12 h-12 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mb-4">
+                                <i data-lucide="building-2" class="w-6 h-6"></i>
+                            </div>
+                            <p class="text-slate-500 text-sm font-bold uppercase tracking-wider">Madarasa</p>
+                            <h3 class="text-3xl font-black mt-1" x-text="stats.classes">0</h3>
+                        </div>
+                        <div class="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
+                            <div class="w-12 h-12 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center mb-4">
+                                <i data-lucide="book-open" class="w-6 h-6"></i>
+                            </div>
+                            <p class="text-slate-500 text-sm font-bold uppercase tracking-wider">Masomo</p>
+                            <h3 class="text-3xl font-black mt-1" x-text="stats.subjects">0</h3>
+                        </div>
+                    </div>
+
+                    <div class="bg-indigo-600 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl shadow-indigo-200 dark:shadow-none">
+                        <div class="relative z-10">
+                            <h3 class="text-2xl font-black mb-2">Habari, <span x-text="user?.name"></span>!</h3>
+                            <p class="text-indigo-100 max-w-md">Karibu tena kwenye mfumo wako wa usimamizi wa shule. Unaweza kuendelea na majukumu yako hapa.</p>
+                        </div>
+                        <i data-lucide="sparkles" class="absolute right-[-20px] bottom-[-20px] w-64 h-64 text-white/10 -rotate-12"></i>
+                    </div>
+                </div>
+
+                <!-- Students View -->
+                <div x-show="currentView === 'students'" class="space-y-6">
+                    <div class="flex justify-between items-center">
+                        <div class="relative w-96">
+                            <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                            <input type="text" placeholder="Tafuta mwanafunzi..." class="w-full pl-12 pr-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 dark:bg-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                        </div>
+                        <button @click="showAddStudent = true" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all">
+                            <i data-lucide="plus" class="w-5 h-5"></i>
+                            Mwanafunzi Mpya
+                        </button>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                                <tr>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Picha</th>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Jina Kamili</th>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Namba ya Usajili</th>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Darasa</th>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest text-right">Vitendo</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50 dark:divide-slate-800">
+                                <template x-for="student in students" :key="student.id">
+                                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                        <td class="px-6 py-4">
+                                            <div class="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 font-bold" x-text="student.full_name.charAt(0)"></div>
+                                        </td>
+                                        <td class="px-6 py-4 font-bold" x-text="student.full_name"></td>
+                                        <td class="px-6 py-4 text-slate-500" x-text="student.registration_number"></td>
+                                        <td class="px-6 py-4 text-slate-500" x-text="student.class_id"></td>
+                                        <td class="px-6 py-4 text-right">
+                                            <button class="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><i data-lucide="edit-2" class="w-4 h-4"></i></button>
+                                            <button @click="confirmAction('Futa Mwanafunzi', `Je, una uhakika unataka kumfuta ${student.full_name}?`, () => deleteStudent(student.id))" class="p-2 text-slate-400 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Staff View -->
+                <div x-show="currentView === 'staff'" class="space-y-6">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xl font-black">Orodha ya Wafanyakazi</h3>
+                        <button @click="showAddStaff = true" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all">
+                            <i data-lucide="plus" class="w-5 h-5"></i>
+                            Mfanyakazi Mpya
+                        </button>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                                <tr>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Jina</th>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Nafasi</th>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Somo</th>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest text-right">Vitendo</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50 dark:divide-slate-800">
+                                <template x-for="staff in teachers" :key="staff.uid">
+                                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                        <td class="px-6 py-4 font-bold" x-text="staff.name"></td>
+                                        <td class="px-6 py-4 text-slate-500" x-text="staff.role"></td>
+                                        <td class="px-6 py-4 text-slate-500" x-text="staff.subject || '-'"></td>
+                                        <td class="px-6 py-4 text-right">
+                                            <button @click="confirmAction('Futa Mfanyakazi', `Je, una uhakika unataka kumfuta ${staff.name}?`, () => deleteStaff(staff.uid))" class="p-2 text-slate-400 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Classes View -->
+                <div x-show="currentView === 'classes'" class="space-y-6">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xl font-black">Orodha ya Madarasa</h3>
+                        <button @click="showAddClass = true" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all">
+                            <i data-lucide="plus" class="w-5 h-5"></i>
+                            Darasa Jipya
+                        </button>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                                <tr>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Jina la Darasa</th>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Mikondo</th>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest">Mwalimu wa Darasa</th>
+                                    <th class="px-6 py-4 text-sm font-black text-slate-500 uppercase tracking-widest text-right">Vitendo</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50 dark:divide-slate-800">
+                                <template x-for="cls in classes" :key="cls.id">
+                                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                        <td class="px-6 py-4 font-bold" x-text="cls.name"></td>
+                                        <td class="px-6 py-4 text-slate-500" x-text="cls.streams.join(', ')"></td>
+                                        <td class="px-6 py-4 text-slate-500" x-text="teachers.find(t => t.uid === cls.teacher_id)?.name || '-'"></td>
+                                        <td class="px-6 py-4 text-right">
+                                            <button @click="confirmAction('Futa Darasa', `Je, una uhakika unataka kufuta darasa la ${cls.name}?`, () => deleteClass(cls.id))" class="p-2 text-slate-400 hover:text-red-500 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Timetable View -->
+                <div x-show="currentView === 'timetable'" class="space-y-6">
+                    <div class="flex flex-wrap gap-4 items-center justify-between">
+                        <div class="flex gap-4">
+                            <select x-model="selectedClass" class="px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 dark:bg-slate-900 outline-none">
+                                <option value="">Chagua Darasa</option>
+                                <template x-for="cls in classes" :key="cls.id">
+                                    <option :value="cls.id" x-text="cls.name"></option>
+                                </template>
+                            </select>
+                            <select x-model="selectedStream" class="px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 dark:bg-slate-900 outline-none">
+                                <option value="">Chagua Mkondo</option>
+                                <template x-for="stream in getStreams()" :key="stream">
+                                    <option :value="stream" x-text="stream"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="flex gap-2">
+                            <button @click="autoGenerateTimetable" class="bg-amber-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-amber-700 transition-all">
+                                <i data-lucide="zap" class="w-5 h-5"></i>
+                                Zalisha Kiotomatiki
+                            </button>
+                            <button @click="exportPDF" class="bg-slate-800 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-900 transition-all">
+                                <i data-lucide="download" class="w-5 h-5"></i>
+                                Pakua PDF
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-x-auto">
+                        <table class="w-full border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 dark:bg-slate-800/50">
+                                    <th class="p-4 border border-slate-100 dark:border-slate-800 text-sm font-black text-slate-500 uppercase">Saa</th>
+                                    <template x-for="day in days" :key="day">
+                                        <th class="p-4 border border-slate-100 dark:border-slate-800 text-sm font-black text-slate-500 uppercase" x-text="day"></th>
+                                    </template>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="p in periods" :key="p.id">
+                                    <tr :class="p.type === 'Break' ? 'bg-slate-50 dark:bg-slate-800/30' : ''">
+                                        <td class="p-4 border border-slate-100 dark:border-slate-800 text-center">
+                                            <p class="text-xs font-black text-indigo-600" x-text="p.time"></p>
+                                            <p x-show="p.type === 'Break'" class="text-[10px] font-bold text-slate-400" x-text="p.label"></p>
+                                        </td>
+                                        <template x-for="day in days" :key="day">
+                                            <td class="p-4 border border-slate-100 dark:border-slate-800 text-center min-w-[150px] cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-colors"
+                                                @click="p.type !== 'Break' && editEntry(day, p.id)">
+                                                <div x-show="p.type !== 'Break'">
+                                                    <p class="font-bold text-sm" x-text="getEntry(day, p.id)?.subject || '-'"></p>
+                                                    <p class="text-[10px] text-slate-400 font-bold" x-text="getEntry(day, p.id)?.teacher || ''"></p>
+                                                </div>
+                                                <div x-show="p.type === 'Break'" class="text-[10px] font-black text-slate-300 uppercase tracking-widest">MAPUMZIKO</div>
+                                            </td>
+                                        </template>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Settings View -->
+                <div x-show="currentView === 'settings'" class="max-w-2xl space-y-8">
+                    <div class="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
+                        <h3 class="text-xl font-black mb-6">Taarifa za Shule</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Jina la Shule</label>
+                                <input type="text" x-model="schoolName" class="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 dark:bg-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                            </div>
+                            <button @click="saveSettings" class="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all">Hifadhi Mabadiliko</button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
+                        <h3 class="text-xl font-black mb-6">Muonekano</h3>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="font-bold">Modi ya Usiku (Dark Mode)</p>
+                                <p class="text-sm text-slate-500">Badili muonekano wa mfumo kuwa mweusi.</p>
+                            </div>
+                            <button @click="toggleDarkMode" :class="isDarkMode ? 'bg-indigo-600' : 'bg-slate-200'" class="w-14 h-8 rounded-full p-1 transition-colors relative">
+                                <div :class="isDarkMode ? 'translate-x-6' : 'translate-x-0'" class="w-6 h-6 bg-white rounded-full transition-transform shadow-sm"></div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div x-show="confirmModal.show" x-cloak class="fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl max-w-sm w-full border border-white dark:border-slate-800 text-center">
+            <div class="w-16 h-16 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="alert-triangle" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-xl font-black mb-2" x-text="confirmModal.title"></h3>
+            <p class="text-slate-500 text-sm mb-6" x-text="confirmModal.message"></p>
+            <div class="flex gap-3">
+                <button @click="confirmModal.show = false" class="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 font-bold text-slate-500">Ghairi</button>
+                <button @click="executeConfirm" class="flex-1 py-3 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-all">Ndiyo, Futa</button>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="showEditTimetable" x-cloak class="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl max-w-md w-full border border-white dark:border-slate-800">
+            <h3 class="text-xl font-black mb-6">Panga Kipindi</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Somo</label>
+                    <select x-model="editForm.subject_id" class="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 dark:bg-slate-900 outline-none">
+                        <option value="">Chagua Somo</option>
+                        <template x-for="s in subjects" :key="s.id">
+                            <option :value="s.id" x-text="s.name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Mwalimu</label>
+                    <select x-model="editForm.teacher_id" class="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 dark:bg-slate-900 outline-none">
+                        <option value="">Chagua Mwalimu</option>
+                        <template x-for="t in teachers" :key="t.uid">
+                            <option :value="t.uid" x-text="t.name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="flex gap-3 pt-4">
+                    <button @click="showEditTimetable = false" class="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 font-bold text-slate-500">Ghairi</button>
+                    <button @click="saveTimetableEntry" class="flex-1 py-3 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-700">Hifadhi</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function amsApp() {
+            return {
+                loading: true,
+                user: null,
+                loginType: 'Staff',
+                loginForm: { name: '', password: '', role: 'Teacher' },
+                schoolName: 'AMS SCHOOL',
+                isDarkMode: false,
+                sidebarOpen: false,
+                currentView: 'dashboard',
+                stats: { students: 0, teachers: 0, classes: 0, subjects: 0 },
+                
+                students: [],
+                teachers: [],
+                classes: [],
+                subjects: [],
+                timetable: [],
+                
+                selectedClass: '',
+                selectedStream: '',
+                showEditTimetable: false,
+                editForm: { day: '', period: '', subject_id: '', teacher_id: '' },
+                
+                // Confirmation Modal State
+                confirmModal: {
+                    show: false,
+                    title: '',
+                    message: '',
+                    action: null
+                },
+
+                days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+                periods: [
+                    { id: 1, time: '08:00 - 09:20', type: 'Double' },
+                    { id: 2, time: '09:20 - 10:40', type: 'Double' },
+                    { id: 'break1', time: '10:40 - 11:00', type: 'Break', label: 'Mapumziko Mafupi' },
+                    { id: 3, time: '11:00 - 12:20', type: 'Double' },
+                    { id: 4, time: '12:20 - 13:00', type: 'Single' },
+                    { id: 'break2', time: '13:00 - 14:00', type: 'Break', label: 'Mapumziko ya Mchana' },
+                    { id: 5, time: '14:00 - 15:20', type: 'Double' },
+                ],
+
+                menuItems: [
+                    { id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
+                    { id: 'students', label: 'Wanafunzi', icon: 'users' },
+                    { id: 'staff', label: 'Wafanyakazi', icon: 'user-cog' },
+                    { id: 'classes', label: 'Madarasa', icon: 'building-2' },
+                    { id: 'attendance', label: 'Mahudhurio', icon: 'calendar-check' },
+                    { id: 'timetable', label: 'Ratiba ya Masomo', icon: 'calendar' },
+                    { id: 'exams', label: 'Matokeo ya Mitihani', icon: 'file-spreadsheet' },
+                    { id: 'settings', label: 'Mipangilio', icon: 'settings' },
+                ],
+
+                async init() {
+                    lucide.createIcons();
+                    await this.fetchSettings();
+                    const savedUser = localStorage.getItem('ams_user');
+                    if (savedUser) {
+                        this.user = JSON.parse(savedUser);
+                        await this.fetchData();
+                    }
+                    this.loading = false;
+                    
+                    this.$watch('currentView', () => {
+                        this.$nextTick(() => lucide.createIcons());
+                    });
+
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async fetchSettings() {
+                    try {
+                        const res = await fetch('/api/settings');
+                        const data = await res.json();
+                        this.schoolName = data.schoolName;
+                        this.isDarkMode = data.isDarkMode === 1;
+                    } catch (e) { console.error(e); }
+                },
+
+                async fetchData() {
+                    try {
+                        const [sRes, tRes, cRes, subRes, timeRes] = await Promise.all([
+                            fetch('/api/students'),
+                            fetch('/api/users'),
+                            fetch('/api/classes'),
+                            fetch('/api/subjects'),
+                            fetch('/api/timetable')
+                        ]);
+                        this.students = await sRes.json();
+                        this.teachers = (await tRes.json()).filter(u => u.role === 'Teacher');
+                        this.classes = await cRes.json();
+                        this.subjects = await subRes.json();
+                        this.timetable = await timeRes.json();
+                        
+                        this.stats = {
+                            students: this.students.length,
+                            teachers: this.teachers.length,
+                            classes: this.classes.length,
+                            subjects: this.subjects.length
+                        };
+                    } catch (e) { console.error(e); }
+                },
+
+                async handleLogin() {
+                    this.loading = true;
+                    try {
+                        const res = await fetch('/api/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                name: this.loginForm.name,
+                                password: this.loginForm.password,
+                                role: this.loginType === 'Student' ? 'Student' : this.loginForm.role
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.error) {
+                            alert(data.error);
+                        } else {
+                            this.user = data;
+                            localStorage.setItem('ams_user', JSON.stringify(data));
+                            await this.fetchData();
+                        }
+                    } catch (e) { alert('Login failed'); }
+                    this.loading = false;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                logout() {
+                    this.user = null;
+                    localStorage.removeItem('ams_user');
+                    this.currentView = 'dashboard';
+                },
+
+                toggleDarkMode() {
+                    this.isDarkMode = !this.isDarkMode;
+                    // In a real app, save to API
+                },
+
+                getViewTitle() {
+                    return this.menuItems.find(i => i.id === this.currentView)?.label || 'Dashboard';
+                },
+
+                getStreams() {
+                    const cls = this.classes.find(c => c.id === this.selectedClass);
+                    return cls ? cls.streams : [];
+                },
+
+                getEntry(day, period) {
+                    const entry = this.timetable.find(t => 
+                        t.class_id === this.selectedClass && 
+                        t.stream === this.selectedStream && 
+                        t.day === day && 
+                        t.period === period
+                    );
+                    if (!entry) return null;
+                    const subject = this.subjects.find(s => s.id === entry.subject_id);
+                    const teacher = this.teachers.find(t => t.uid === entry.teacher_id);
+                    return { subject: subject?.name, teacher: teacher?.name };
+                },
+
+                editEntry(day, period) {
+                    if (!this.selectedClass || !this.selectedStream) return alert('Chagua darasa na mkondo kwanza');
+                    this.editForm = { day, period, subject_id: '', teacher_id: '' };
+                    const existing = this.timetable.find(t => 
+                        t.class_id === this.selectedClass && 
+                        t.stream === this.selectedStream && 
+                        t.day === day && 
+                        t.period === period
+                    );
+                    if (existing) {
+                        this.editForm.subject_id = existing.subject_id;
+                        this.editForm.teacher_id = existing.teacher_id;
+                    }
+                    this.showEditTimetable = true;
+                },
+
+                async saveTimetableEntry() {
+                    const id = `${this.selectedClass}_${this.selectedStream}_${this.editForm.day}_${this.editForm.period}`;
+                    const entry = {
+                        id,
+                        class_id: this.selectedClass,
+                        stream: this.selectedStream,
+                        day: this.editForm.day,
+                        period: this.editForm.period,
+                        subject_id: this.editForm.subject_id,
+                        teacher_id: this.editForm.teacher_id
+                    };
+                    
+                    try {
+                        await fetch('/api/timetable', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(entry)
+                        });
+                        await this.fetchData();
+                        this.showEditTimetable = false;
+                    } catch (e) { alert('Hifadhi imeshindwa'); }
+                },
+
+                async deleteStudent(id) {
+                    try {
+                        await fetch(`/api/students/${id}`, { method: 'DELETE' });
+                        await this.fetchData();
+                    } catch (e) { alert('Futa imeshindwa'); }
+                },
+
+                async deleteStaff(uid) {
+                    try {
+                        await fetch(`/api/users/${uid}`, { method: 'DELETE' });
+                        await this.fetchData();
+                    } catch (e) { alert('Futa imeshindwa'); }
+                },
+
+                async deleteClass(id) {
+                    try {
+                        await fetch(`/api/classes/${id}`, { method: 'DELETE' });
+                        await this.fetchData();
+                    } catch (e) { alert('Futa imeshindwa'); }
+                },
+
+                confirmAction(title, message, action) {
+                    this.confirmModal = {
+                        show: true,
+                        title,
+                        message,
+                        action
+                    };
+                },
+
+                async executeConfirm() {
+                    if (this.confirmModal.action) {
+                        await this.confirmModal.action();
+                    }
+                    this.confirmModal.show = false;
+                },
+
+                async autoGenerateTimetable() {
+                    this.confirmAction(
+                        'Zalisha Ratiba',
+                        'Je, una uhakika unataka kuzalisha ratiba kiotomatiki? Hii itafuta ratiba zilizopo za darasa hili.',
+                        async () => {
+                            // Logic for auto-gen would go here
+                            alert('Kazi hii inahitaji vigezo vya walimu na masomo kukamilika.');
+                        }
+                    );
+                },
+
+                exportPDF() {
+                    if (!this.selectedClass || !this.selectedStream) return alert('Chagua darasa kwanza');
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF('l', 'mm', 'a4');
+                    const className = this.classes.find(c => c.id === this.selectedClass)?.name;
+                    
+                    doc.setFontSize(18);
+                    doc.text(`RATIBA YA MASOMO - ${className} ${this.selectedStream}`, 14, 15);
+                    
+                    const headers = [['Saa / Kipindi', ...this.days]];
+                    const body = this.periods.map(p => {
+                        if (p.type === 'Break') return [{ content: p.label, colSpan: 6, styles: { halign: 'center', fillColor: [241, 245, 249] } }];
+                        const row = [p.time];
+                        this.days.forEach(day => {
+                            const entry = this.getEntry(day, p.id);
+                            row.push(entry ? `${entry.subject}\n${entry.teacher}` : '-');
+                        });
+                        return row;
+                    });
+
+                    doc.autoTable({
+                        head: headers,
+                        body: body,
+                        startY: 25,
+                        theme: 'grid',
+                        styles: { fontSize: 8, cellPadding: 2 },
+                        headStyles: { fillColor: [79, 70, 229] }
+                    });
+
+                    doc.save(`ratiba_${className}_${this.selectedStream}.pdf`);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
